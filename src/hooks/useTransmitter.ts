@@ -26,7 +26,7 @@ export function useTransmitter(settings: AppSettings) {
       settings.errorCorrection
     );
     return engineRef.current;
-  }, [settings.baudRate, settings.markFreq, settings.spaceFreq]);
+  }, [settings.baudRate, settings.markFreq, settings.spaceFreq, settings.errorCorrection]);
 
   const transmit = useCallback(async (file: SelectedFile) => {
     const engine = getEngine();

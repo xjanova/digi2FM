@@ -33,9 +33,6 @@ export class FskDemodulator {
   private silentBitCount: number = 0;
   private errorCorrection: ErrorCorrectionMode = 'none';
 
-  // Clock recovery: track bit transitions during preamble to calibrate samplesPerBit
-  private preambleBitCount: number = 0;
-  private lastBit: number = -1;
   private nominalSamplesPerBit: number;
 
   // Callbacks
@@ -121,19 +118,10 @@ export class FskDemodulator {
       this.silentBitCount = 0;
 
       if (!this.synced) {
-        // Track preamble bit transitions for clock recovery
-        if (result.bit !== this.lastBit && this.lastBit !== -1) {
-          this.preambleBitCount++;
-        }
-        this.lastBit = result.bit;
-
         const found = this.syncDetector.feedBit(result.bit);
         if (found) {
           this.synced = true;
           this.receivedBits = [];
-          // Reset clock recovery counters for next sync
-          this.preambleBitCount = 0;
-          this.lastBit = -1;
         }
       } else {
         this.receivedBits.push(result.bit);
@@ -151,32 +139,63 @@ export class FskDemodulator {
     }
   }
 
-  private tryParsePacket() {
-    // Apply error correction decoding before UART parsing
-    const correctedBits = decodeBits(this.receivedBits, this.errorCorrection);
+  /**
+   * Calculate how many raw (error-corrected-encoded) bits are needed
+   * for a given number of UART bits.
+   */
+  private rawBitsNeeded(uartBits: number): number {
+    switch (this.errorCorrection) {
+      case 'repetition':
+        return uartBits * ProtocolConfig.REPETITION_FACTOR; // 3x
+      case 'hamming':
+        // Hamming(7,4) encodes 4 bits -> 7 bits.
+        // For N UART bits, we need ceil(N/4)*7 raw bits.
+        return Math.ceil(uartBits / 4) * 7;
+      default:
+        return uartBits;
+    }
+  }
 
-    // Convert UART-framed bits to bytes
+  /**
+   * Skip one byte's worth of raw bits (accounting for error correction).
+   */
+  private skipOneByte(): number {
+    return this.rawBitsNeeded(ProtocolConfig.BITS_PER_BYTE);
+  }
+
+  private tryParsePacket() {
+    // First, decode all received bits to peek at the length field.
+    // We need at least 2 UART bytes (20 UART bits) worth of raw bits.
+    const minRawBits = this.rawBitsNeeded(20); // 2 bytes * 10 bits/byte
+    if (this.receivedBits.length < minRawBits) return;
+
+    // Trial decode to read the length field
+    const correctedBits = decodeBits(this.receivedBits, this.errorCorrection);
     const bytes = bitsToBytes(correctedBits);
     if (bytes.length < 2) return;
 
     // Read expected length from first 2 bytes
     const expectedLen = (bytes[0] << 8) | bytes[1];
     if (expectedLen < 7 || expectedLen > 256) {
-      // Invalid length - skip one byte worth of bits and re-search for sync
-      this.receivedBits = this.receivedBits.slice(ProtocolConfig.BITS_PER_BYTE);
+      // Invalid length - skip one byte worth of RAW bits
+      const skip = this.skipOneByte();
+      this.receivedBits = this.receivedBits.slice(skip);
       if (this.receivedBits.length < 10) {
         this.resetSync();
       }
       return;
     }
 
-    // Check if we have enough bytes
-    const bitsNeeded = expectedLen * ProtocolConfig.BITS_PER_BYTE;
-    if (this.receivedBits.length < bitsNeeded) return;
+    // Calculate how many RAW bits we need for the full packet
+    const uartBitsNeeded = expectedLen * ProtocolConfig.BITS_PER_BYTE;
+    const rawBitsForPacket = this.rawBitsNeeded(uartBitsNeeded);
 
-    // Extract exactly the packet bytes
-    const packetBits = this.receivedBits.slice(0, bitsNeeded);
-    const packetBytes = bitsToBytes(packetBits);
+    if (this.receivedBits.length < rawBitsForPacket) return; // Wait for more bits
+
+    // Extract exactly the raw bits needed, decode, and parse
+    const packetRawBits = this.receivedBits.slice(0, rawBitsForPacket);
+    const decodedBits = decodeBits(packetRawBits, this.errorCorrection);
+    const packetBytes = bitsToBytes(decodedBits);
 
     const packet = parsePacket(new Uint8Array(packetBytes.subarray(0, expectedLen)));
     if (packet) {
@@ -186,8 +205,8 @@ export class FskDemodulator {
       console.warn('[Digi2FM] Packet CRC error or parse failure, dropping packet');
     }
 
-    // Keep remaining bits (may contain start of next preamble)
-    const remainingBits = this.receivedBits.slice(bitsNeeded);
+    // Keep remaining raw bits (may contain start of next preamble)
+    const remainingBits = this.receivedBits.slice(rawBitsForPacket);
     this.resetSync();
 
     // Feed remaining bits back into sync detector
@@ -204,9 +223,6 @@ export class FskDemodulator {
     this.synced = false;
     this.receivedBits = [];
     this.syncDetector.reset();
-    this.preambleBitCount = 0;
-    this.lastBit = -1;
-    // Reset samplesPerBit to nominal (will be re-calibrated on next preamble)
     this.samplesPerBit = this.nominalSamplesPerBit;
   }
 

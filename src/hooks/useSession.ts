@@ -6,7 +6,7 @@ import { SessionManager } from '../protocol/SessionManager';
 import { CryptoEngine } from '../crypto/CryptoEngine';
 import { SessionState, AppSettings, SelectedFile } from '../types';
 import { setupAudioMode } from '../utils/PermissionUtils';
-import { RECORDING_PRESET, wavBase64ToFloat32 } from '../utils/AudioUtils';
+import { getRecordingOptions, audioBase64ToFloat32 } from '../utils/AudioUtils';
 
 const MAX_POLL_ERRORS = 10;
 
@@ -42,7 +42,7 @@ export function useSession(settings: AppSettings) {
       settings.errorCorrection
     );
     return engineRef.current;
-  }, [settings.baudRate, settings.markFreq, settings.spaceFreq]);
+  }, [settings.baudRate, settings.markFreq, settings.spaceFreq, settings.errorCorrection]);
 
   const getCrypto = useCallback(() => {
     if (!cryptoRef.current) {
@@ -75,7 +75,7 @@ export function useSession(settings: AppSettings) {
 
     try {
       const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(RECORDING_PRESET);
+      await recording.prepareToRecordAsync(getRecordingOptions());
       await recording.startAsync();
       recordingRef.current = recording;
 
@@ -83,27 +83,29 @@ export function useSession(settings: AppSettings) {
         if (!activeRef.current) return;
 
         try {
-          const nextRecording = new Audio.Recording();
-          await nextRecording.prepareToRecordAsync(RECORDING_PRESET);
-          await nextRecording.startAsync();
-
+          // Sequential: stop previous, process, then start new (no overlap)
           const prevRecording = recordingRef.current;
+          if (!prevRecording) return;
+
+          await prevRecording.stopAndUnloadAsync();
+          const uri = prevRecording.getURI();
+
+          // Start new recording immediately after stopping
+          const nextRecording = new Audio.Recording();
+          await nextRecording.prepareToRecordAsync(getRecordingOptions());
+          await nextRecording.startAsync();
           recordingRef.current = nextRecording;
 
-          if (prevRecording) {
-            await prevRecording.stopAndUnloadAsync();
-            const uri = prevRecording.getURI();
-
-            if (uri) {
-              const base64 = await LegacyFileSystem.readAsStringAsync(uri, {
-                encoding: LegacyFileSystem.EncodingType.Base64,
-              });
-              const samples = wavBase64ToFloat32(base64);
-              if (samples && samples.length > 0) {
-                engine.feedSamples(samples);
-              }
-              await LegacyFileSystem.deleteAsync(uri, { idempotent: true });
+          // Process previous recording
+          if (uri) {
+            const base64 = await LegacyFileSystem.readAsStringAsync(uri, {
+              encoding: LegacyFileSystem.EncodingType.Base64,
+            });
+            const samples = audioBase64ToFloat32(base64);
+            if (samples && samples.length > 0) {
+              engine.feedSamples(samples);
             }
+            await LegacyFileSystem.deleteAsync(uri, { idempotent: true });
           }
           errorCountRef.current = 0;
         } catch (err) {

@@ -37,7 +37,7 @@ export function useReceiver(settings: AppSettings) {
       settings.errorCorrection
     );
     return engineRef.current;
-  }, [settings.baudRate, settings.markFreq, settings.spaceFreq]);
+  }, [settings.baudRate, settings.markFreq, settings.spaceFreq, settings.errorCorrection]);
 
   const startListening = useCallback(async () => {
     await setupAudioMode();

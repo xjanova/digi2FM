@@ -42,10 +42,9 @@ export class CryptoEngine {
     const encoder = new TextEncoder();
     let data: Uint8Array = new Uint8Array(encoder.encode(passphrase + 'digi2fm-key-v1'));
 
-    // Iterate SHA-512 (100 rounds - fast enough to not freeze UI,
-    // sufficient security for acoustic channel with limited brute-force surface)
-    const iterations = 100;
-    for (let i = 0; i < iterations; i++) {
+    // Iterate SHA-512 - fast enough to not freeze UI,
+    // sufficient security for acoustic channel with limited brute-force surface
+    for (let i = 0; i < ProtocolConfig.KDF_ITERATIONS; i++) {
       data = new Uint8Array(nacl.hash(data));
     }
 

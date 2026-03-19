@@ -59,7 +59,7 @@ export const ProtocolConfig = {
   KEY_HASH_LENGTH: 8,
   SESSION_SALT_LENGTH: 16,
   NONCE_LENGTH: 24,
-  KDF_ITERATIONS: 10000,
+  KDF_ITERATIONS: 100,  // Low iteration count is sufficient for acoustic channel
 
   // Capabilities bitmask
   CAP_ENCRYPTION_SUPPORTED: 0x01,
