@@ -1,16 +1,22 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
+import SessionScreen from '../screens/SessionScreen';
 import SendScreen from '../screens/SendScreen';
 import ReceiveScreen from '../screens/ReceiveScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 
+const icons: Record<string, string> = {
+  Session: '🔗',
+  Send: '📡',
+  Receive: '📻',
+  Settings: '⚙️',
+};
+
 const TabIcon = ({ label, color }: { label: string; color: string }) => (
-  <Text style={{ color, fontSize: 20 }}>
-    {label === 'Send' ? '📡' : label === 'Receive' ? '📻' : '⚙️'}
-  </Text>
+  <Text style={{ color, fontSize: 20 }}>{icons[label] || '?'}</Text>
 );
 
 export default function AppNavigator() {
@@ -24,6 +30,14 @@ export default function AppNavigator() {
         tabBarInactiveTintColor: '#666',
       }}
     >
+      <Tab.Screen
+        name="Session"
+        component={SessionScreen}
+        options={{
+          title: 'Session',
+          tabBarIcon: ({ color }) => <TabIcon label="Session" color={color} />,
+        }}
+      />
       <Tab.Screen
         name="Send"
         component={SendScreen}

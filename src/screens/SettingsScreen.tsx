@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
+  TextInput,
 } from 'react-native';
 import { ProtocolConfig } from '../constants/ProtocolConfig';
 import { BaudRate, ErrorCorrectionMode } from '../types';
@@ -103,6 +104,40 @@ export default function SettingsScreen() {
         <Text style={styles.freqDetail}>Bell 202 Standard</Text>
       </View>
 
+      {/* Encryption */}
+      <Text style={styles.sectionTitle}>Encryption</Text>
+      <View style={styles.switchRow}>
+        <View>
+          <Text style={styles.switchLabel}>Enable Encryption</Text>
+          <Text style={styles.switchDesc}>XSalsa20-Poly1305 (Pre-Shared Key)</Text>
+        </View>
+        <Switch
+          value={settings.encryptionEnabled}
+          onValueChange={(v) => updateSettings({ encryptionEnabled: v })}
+          trackColor={{ false: '#333', true: '#00d4ff55' }}
+          thumbColor={settings.encryptionEnabled ? '#00d4ff' : '#666'}
+        />
+      </View>
+
+      {settings.encryptionEnabled && (
+        <View style={styles.passphraseBox}>
+          <Text style={styles.passphraseLabel}>Passphrase</Text>
+          <TextInput
+            style={styles.passphraseInput}
+            value={settings.encryptionPassphrase}
+            onChangeText={(text) => updateSettings({ encryptionPassphrase: text })}
+            placeholder="Enter shared secret..."
+            placeholderTextColor="#555"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.passphraseHint}>
+            Both devices must use the exact same passphrase
+          </Text>
+        </View>
+      )}
+
       {/* Debug Mode */}
       <View style={styles.switchRow}>
         <View>
@@ -182,6 +217,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#252540', borderRadius: 12, padding: 16,
     marginTop: 32, alignItems: 'center',
   },
+  passphraseBox: { backgroundColor: '#252540', borderRadius: 8, padding: 14, marginTop: 8 },
+  passphraseLabel: { color: '#ccc', fontSize: 13, marginBottom: 6 },
+  passphraseInput: {
+    backgroundColor: '#1a1a2e', borderRadius: 6, padding: 12,
+    color: '#fff', fontSize: 16, borderWidth: 1, borderColor: '#333',
+  },
+  passphraseHint: { color: '#666', fontSize: 11, marginTop: 6 },
   aboutTitle: { color: '#00d4ff', fontSize: 20, fontWeight: '700', marginBottom: 8 },
   aboutText: { color: '#888', fontSize: 13, textAlign: 'center', lineHeight: 20 },
 });

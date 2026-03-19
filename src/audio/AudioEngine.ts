@@ -137,6 +137,27 @@ export class AudioEngine {
     this.demodulator.processSamples(samples);
   }
 
+  /**
+   * Transmit a single packet (for control packets like ACK, CONNECT).
+   * Briefly pauses receive to avoid echo, resumes after turnaround delay.
+   */
+  async transmitSinglePacket(packetBytes: Uint8Array): Promise<void> {
+    const ctx = this.ensureContext();
+    const wasReceiving = this.isReceiving;
+
+    this.isTransmitting = true;
+    this.modulator.reset();
+
+    try {
+      await this.playPcmSamples(ctx, this.modulator.modulatePacket(packetBytes));
+      // Turnaround delay - let speaker echo settle before mic picks up
+      await this.sleep(ProtocolConfig.TURNAROUND_DELAY_MS);
+    } finally {
+      this.isTransmitting = false;
+      this.currentSource = null;
+    }
+  }
+
   stopTransmitting() {
     this.isTransmitting = false;
     if (this.currentSource) {

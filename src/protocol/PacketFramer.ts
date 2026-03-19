@@ -151,3 +151,107 @@ export function parseFileHeader(data: Uint8Array): FileHeaderPayload {
 
   return { fileName, fileSize, totalChunks, mimeType };
 }
+
+// ============ SESSION CONTROL PACKETS ============
+
+/**
+ * Create a CONNECT packet for two-way session handshake
+ */
+export function createConnectPacket(
+  version: number,
+  capabilities: number,
+  sessionSalt: Uint8Array,
+  keyHash: Uint8Array
+): Uint8Array {
+  // Payload: [version 1B][capabilities 1B][sessionSalt 16B][keyHash 8B]
+  const payload = new Uint8Array(26);
+  payload[0] = version;
+  payload[1] = capabilities;
+  payload.set(sessionSalt.subarray(0, 16), 2);
+  payload.set(keyHash.subarray(0, 8), 18);
+  return framePacket(0, ProtocolConfig.PKT_TYPE_CONNECT, payload);
+}
+
+/**
+ * Create a CONNECT_ACK packet
+ */
+export function createConnectAckPacket(
+  version: number,
+  capabilities: number,
+  sessionSalt: Uint8Array,
+  keyHash: Uint8Array
+): Uint8Array {
+  const payload = new Uint8Array(26);
+  payload[0] = version;
+  payload[1] = capabilities;
+  payload.set(sessionSalt.subarray(0, 16), 2);
+  payload.set(keyHash.subarray(0, 8), 18);
+  return framePacket(0, ProtocolConfig.PKT_TYPE_CONNECT_ACK, payload);
+}
+
+/**
+ * Parse a CONNECT or CONNECT_ACK payload
+ */
+export function parseConnectPayload(data: Uint8Array): {
+  protocolVersion: number;
+  capabilities: number;
+  sessionSalt: Uint8Array;
+  keyHash: Uint8Array;
+} {
+  if (data.length < 26) throw new Error('Connect payload too short');
+  return {
+    protocolVersion: data[0],
+    capabilities: data[1],
+    sessionSalt: new Uint8Array(data.subarray(2, 18)),
+    keyHash: new Uint8Array(data.subarray(18, 26)),
+  };
+}
+
+/**
+ * Create an ACK packet
+ */
+export function createAckPacket(ackedSeqNo: number): Uint8Array {
+  const payload = new Uint8Array(2);
+  payload[0] = (ackedSeqNo >> 8) & 0xFF;
+  payload[1] = ackedSeqNo & 0xFF;
+  return framePacket(0, ProtocolConfig.PKT_TYPE_ACK, payload);
+}
+
+/**
+ * Create a NACK packet
+ */
+export function createNackPacket(nackedSeqNo: number, reason: number): Uint8Array {
+  const payload = new Uint8Array(3);
+  payload[0] = (nackedSeqNo >> 8) & 0xFF;
+  payload[1] = nackedSeqNo & 0xFF;
+  payload[2] = reason;
+  return framePacket(0, ProtocolConfig.PKT_TYPE_NACK, payload);
+}
+
+/**
+ * Create a DISCONNECT packet
+ */
+export function createDisconnectPacket(reason: number): Uint8Array {
+  const payload = new Uint8Array(1);
+  payload[0] = reason;
+  return framePacket(0, ProtocolConfig.PKT_TYPE_DISCONNECT, payload);
+}
+
+/**
+ * Parse an ACK payload
+ */
+export function parseAckPayload(data: Uint8Array): { ackedSeqNo: number } {
+  if (data.length < 2) throw new Error('ACK payload too short');
+  return { ackedSeqNo: (data[0] << 8) | data[1] };
+}
+
+/**
+ * Parse a NACK payload
+ */
+export function parseNackPayload(data: Uint8Array): { nackedSeqNo: number; reason: number } {
+  if (data.length < 3) throw new Error('NACK payload too short');
+  return {
+    nackedSeqNo: (data[0] << 8) | data[1],
+    reason: data[2],
+  };
+}

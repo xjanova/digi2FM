@@ -16,15 +16,54 @@ export const ProtocolConfig = {
   SYNC_WORD_BITS: 16,
   MAX_PACKET_DATA_SIZE: 64,    // bytes per packet payload
 
-  // Packet types
+  // Packet types - file transfer
   PKT_TYPE_FILE_HEADER: 0x01,
   PKT_TYPE_DATA: 0x02,
   PKT_TYPE_EOF: 0x03,
+
+  // Packet types - session control
+  PKT_TYPE_CONNECT: 0x10,
+  PKT_TYPE_CONNECT_ACK: 0x11,
+  PKT_TYPE_ACK: 0x12,
+  PKT_TYPE_NACK: 0x13,
+  PKT_TYPE_DISCONNECT: 0x14,
+  PKT_TYPE_PING: 0x15,
 
   // Timing
   INTER_PACKET_GAP_MS: 150,    // silence between packets
   SYNC_TIMEOUT_MS: 30000,      // how long to wait for sync
   PACKET_TIMEOUT_MS: 5000,     // timeout for a single packet
+
+  // ARQ (Automatic Repeat reQuest) timing
+  ACK_TIMEOUT_MS: 3000,        // time to wait for ACK
+  MAX_RETRIES: 3,              // max retransmission attempts
+  CONNECT_TIMEOUT_MS: 5000,    // time to wait for CONNECT_ACK
+  CONNECT_RETRIES: 3,          // max CONNECT retransmissions
+  TURNAROUND_DELAY_MS: 250,   // half-duplex speaker/mic switch guard
+
+  // NACK reasons
+  NACK_CRC_FAILURE: 0x00,
+  NACK_OUT_OF_ORDER: 0x01,
+  NACK_TIMEOUT: 0x02,
+  NACK_DECRYPT_FAILURE: 0x03,
+
+  // Disconnect reasons
+  DISCONNECT_NORMAL: 0x00,
+  DISCONNECT_ERROR: 0x01,
+  DISCONNECT_KEY_MISMATCH: 0x02,
+
+  // Protocol version
+  PROTOCOL_VERSION: 1,
+
+  // Encryption
+  KEY_HASH_LENGTH: 8,
+  SESSION_SALT_LENGTH: 16,
+  NONCE_LENGTH: 24,
+  KDF_ITERATIONS: 10000,
+
+  // Capabilities bitmask
+  CAP_ENCRYPTION_SUPPORTED: 0x01,
+  CAP_ENCRYPTION_REQUIRED: 0x02,
 
   // Error correction modes
   ERROR_CORRECTION_NONE: 'none' as const,

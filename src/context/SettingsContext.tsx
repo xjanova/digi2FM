@@ -9,6 +9,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   errorCorrection: 'none',
   volumeBoost: false,
   debugMode: false,
+  encryptionEnabled: false,
+  encryptionPassphrase: '',
 };
 
 interface SettingsContextType {
