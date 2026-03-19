@@ -115,9 +115,20 @@ export function parseFileHeader(data: Uint8Array): FileHeaderPayload {
   const decoder = new TextDecoder();
   let offset = 0;
 
+  if (data.length < 8) {
+    throw new Error('File header too short');
+  }
+
   const nameLen = data[offset++];
+  if (offset + nameLen + 7 > data.length) {
+    throw new Error('File header truncated at filename');
+  }
   const fileName = decoder.decode(data.subarray(offset, offset + nameLen));
   offset += nameLen;
+
+  if (offset + 6 > data.length) {
+    throw new Error('File header truncated at file size');
+  }
 
   const fileSize =
     ((data[offset] << 24) >>> 0) +
@@ -129,8 +140,14 @@ export function parseFileHeader(data: Uint8Array): FileHeaderPayload {
   const totalChunks = (data[offset] << 8) | data[offset + 1];
   offset += 2;
 
+  if (offset >= data.length) {
+    throw new Error('File header truncated at mime type');
+  }
+
   const mimeLen = data[offset++];
-  const mimeType = decoder.decode(data.subarray(offset, offset + mimeLen));
+  const mimeType = offset + mimeLen <= data.length
+    ? decoder.decode(data.subarray(offset, offset + mimeLen))
+    : 'application/octet-stream';
 
   return { fileName, fileSize, totalChunks, mimeType };
 }

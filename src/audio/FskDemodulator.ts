@@ -160,6 +160,8 @@ export class FskDemodulator {
     if (packet) {
       this.packetsReceived++;
       this.onPacket?.(packet);
+    } else {
+      console.warn('[Digi2FM] Packet CRC error or parse failure, dropping packet');
     }
 
     // Keep remaining bits (may contain start of next preamble)

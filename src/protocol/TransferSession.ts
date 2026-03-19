@@ -25,6 +25,8 @@ export class TransferSession {
   // Receive state
   private receivedChunks: Map<number, Uint8Array> = new Map();
   private fileHeader: FileHeaderPayload | null = null;
+  private receiveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private lastPacketTime: number = 0;
 
   constructor(audioEngine: AudioEngine) {
     this.audioEngine = audioEngine;
@@ -116,30 +118,53 @@ export class TransferSession {
   startReceive(): void {
     this.receivedChunks.clear();
     this.fileHeader = null;
+    this.lastPacketTime = Date.now();
 
     this.updateState({ status: 'waiting_sync', progress: 0 });
 
+    // Packet callback must be synchronous - queue async work separately
     this.audioEngine.startReceiving(
       (packet) => this.handleReceivedPacket(packet),
-      (detected, markEnergy, spaceEnergy) => {
-        // Signal detection callback - could update UI visualizer
+      (detected, _markEnergy, _spaceEnergy) => {
+        if (detected) {
+          this.lastPacketTime = Date.now();
+        }
       }
     );
+
+    // Start timeout watchdog
+    this.startTimeoutWatchdog();
   }
 
-  private async handleReceivedPacket(packet: Packet) {
-    switch (packet.header.pktType) {
-      case ProtocolConfig.PKT_TYPE_FILE_HEADER:
-        this.fileHeader = parseFileHeader(packet.data);
-        this.updateState({
-          status: 'receiving_header',
-          fileName: this.fileHeader.fileName,
-          fileSize: this.fileHeader.fileSize,
-          totalPackets: this.fileHeader.totalChunks + 2, // header + data + eof
-        });
-        break;
+  /**
+   * Handle a received packet. This is called synchronously from the
+   * demodulator, so async work (file saving) is queued via setTimeout.
+   */
+  private handleReceivedPacket(packet: Packet): void {
+    this.lastPacketTime = Date.now();
 
-      case ProtocolConfig.PKT_TYPE_DATA:
+    switch (packet.header.pktType) {
+      case ProtocolConfig.PKT_TYPE_FILE_HEADER: {
+        try {
+          this.fileHeader = parseFileHeader(packet.data);
+          // Validate header
+          if (!this.fileHeader.fileName || this.fileHeader.totalChunks <= 0) {
+            this.updateState({ status: 'error', error: 'Invalid file header' });
+            return;
+          }
+          this.updateState({
+            status: 'receiving_header',
+            fileName: this.fileHeader.fileName,
+            fileSize: this.fileHeader.fileSize,
+            totalPackets: this.fileHeader.totalChunks + 2,
+          });
+        } catch {
+          this.updateState({ status: 'error', error: 'Corrupted file header' });
+        }
+        break;
+      }
+
+      case ProtocolConfig.PKT_TYPE_DATA: {
         if (!this.fileHeader) return;
         this.receivedChunks.set(packet.header.seqNo, packet.data);
         const dataProgress = this.receivedChunks.size / this.fileHeader.totalChunks;
@@ -149,10 +174,14 @@ export class TransferSession {
           progress: dataProgress,
         });
         break;
+      }
 
-      case ProtocolConfig.PKT_TYPE_EOF:
-        await this.finishReceive();
+      case ProtocolConfig.PKT_TYPE_EOF: {
+        // Queue async finishReceive via setTimeout to avoid blocking demodulator
+        this.clearTimeoutWatchdog();
+        setTimeout(() => this.finishReceive(), 0);
         break;
+      }
     }
   }
 
@@ -195,9 +224,42 @@ export class TransferSession {
     }
   }
 
+  // ============ TIMEOUT ============
+
+  private startTimeoutWatchdog() {
+    this.clearTimeoutWatchdog();
+    this.receiveTimeoutId = setInterval(() => {
+      const elapsed = Date.now() - this.lastPacketTime;
+      // Timeout after 30 seconds of no signal
+      if (elapsed > ProtocolConfig.SYNC_TIMEOUT_MS) {
+        const status = this.state.status;
+        if (status === 'waiting_sync') {
+          // Still waiting for first sync - just continue
+          return;
+        }
+        if (status === 'receiving_data' || status === 'receiving_header') {
+          this.clearTimeoutWatchdog();
+          this.updateState({
+            status: 'error',
+            error: `Transfer timed out after ${Math.round(elapsed / 1000)}s of silence`,
+          });
+          this.audioEngine.stopReceiving();
+        }
+      }
+    }, 5000);
+  }
+
+  private clearTimeoutWatchdog() {
+    if (this.receiveTimeoutId) {
+      clearInterval(this.receiveTimeoutId);
+      this.receiveTimeoutId = null;
+    }
+  }
+
   // ============ CONTROL ============
 
   stop() {
+    this.clearTimeoutWatchdog();
     this.audioEngine.stopTransmitting();
     this.audioEngine.stopReceiving();
     this.updateState({ status: 'idle', progress: 0 });
