@@ -46,6 +46,7 @@ export class SessionManager {
   private sendIndex: number = 0;
   private sendRetries: number = 0;
   private sendResolve?: (success: boolean) => void;
+  private currentPacketBytes?: Uint8Array; // for retransmit
   private ackTimeoutId?: ReturnType<typeof setTimeout>;
 
   // Receive state
@@ -248,39 +249,47 @@ export class SessionManager {
 
   /**
    * Send a single packet and wait for ACK. Returns true if ACK received.
+   * Uses stop-and-wait ARQ with timeout-based retransmission.
    */
   private sendPacketWithArq(packetBytes: Uint8Array, _index: number): Promise<boolean> {
-    return new Promise(async (resolve) => {
+    return new Promise((resolve) => {
       this.sendRetries = 0;
       this.sendResolve = resolve;
+      this.currentPacketBytes = packetBytes;
 
-      const attemptSend = async () => {
-        if (this.state.status !== 'sending') {
-          resolve(false);
-          return;
-        }
-
-        await this.audioEngine.transmitSinglePacket(packetBytes);
-
-        // Wait for ACK
-        this.ackTimeoutId = setTimeout(async () => {
-          this.sendRetries++;
-          this.updateState({ retryCount: this.sendRetries });
-
-          if (this.sendRetries >= ProtocolConfig.MAX_RETRIES) {
-            this.sendResolve = undefined;
-            resolve(false);
-            return;
-          }
-
-          // Retransmit
-          console.log(`[Digi2FM] Retransmit attempt ${this.sendRetries}`);
-          await attemptSend();
-        }, ProtocolConfig.ACK_TIMEOUT_MS);
-      };
-
-      await attemptSend();
+      this.attemptSendCurrentPacket();
     });
+  }
+
+  private async attemptSendCurrentPacket(): Promise<void> {
+    if ((this.state.status as string) !== 'sending' || !this.currentPacketBytes) {
+      if (this.sendResolve) {
+        const r = this.sendResolve;
+        this.sendResolve = undefined;
+        r(false);
+      }
+      return;
+    }
+
+    await this.audioEngine.transmitSinglePacket(this.currentPacketBytes);
+
+    // Set ACK timeout - will retransmit or give up
+    this.ackTimeoutId = setTimeout(() => {
+      this.sendRetries++;
+      this.updateState({ retryCount: this.sendRetries });
+
+      if (this.sendRetries >= ProtocolConfig.MAX_RETRIES) {
+        if (this.sendResolve) {
+          const r = this.sendResolve;
+          this.sendResolve = undefined;
+          r(false);
+        }
+        return;
+      }
+
+      console.log(`[Digi2FM] Retransmit attempt ${this.sendRetries}`);
+      this.attemptSendCurrentPacket();
+    }, ProtocolConfig.ACK_TIMEOUT_MS);
   }
 
   // ============ PACKET HANDLER ============
@@ -412,22 +421,27 @@ export class SessionManager {
   }
 
   private onNack(packet: Packet): void {
-    if (this.state.status !== 'sending') return;
+    if ((this.state.status as string) !== 'sending') return;
 
     try {
       const payload = parseNackPayload(packet.data);
       console.warn(`[Digi2FM] NACK received for seq ${payload.nackedSeqNo}, reason: ${payload.reason}`);
-      // NACK triggers retransmit - the ACK timeout will handle it
-      // But clear the timer to retransmit sooner
+
+      // Clear the ACK timeout (don't wait for it)
       this.clearTimer('ack');
-      if (this.sendResolve) {
-        this.sendRetries++;
-        if (this.sendRetries >= ProtocolConfig.MAX_RETRIES) {
-          const resolve = this.sendResolve;
+      this.sendRetries++;
+      this.updateState({ retryCount: this.sendRetries });
+
+      if (this.sendRetries >= ProtocolConfig.MAX_RETRIES) {
+        if (this.sendResolve) {
+          const r = this.sendResolve;
           this.sendResolve = undefined;
-          resolve(false);
+          r(false);
         }
-        // Otherwise, the ARQ loop will retry
+      } else {
+        // Retransmit after short delay
+        console.log(`[Digi2FM] NACK retransmit attempt ${this.sendRetries}`);
+        setTimeout(() => this.attemptSendCurrentPacket(), 100);
       }
     } catch {
       // Invalid NACK

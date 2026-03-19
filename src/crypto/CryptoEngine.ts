@@ -14,23 +14,38 @@ export class CryptoEngine {
   private combinedSalt: Uint8Array | null = null;
   private _enabled: boolean = false;
 
+  private lastPassphrase: string = '';
+
   /**
    * Derive a 32-byte key from passphrase using iterated SHA-512.
+   * Caches the result - only re-derives if passphrase changes.
+   * Uses 100 iterations (sufficient for acoustic channel threat model).
    */
   deriveKey(passphrase: string): void {
     if (!passphrase) {
       this.key = null;
       this.keyHash = null;
       this._enabled = false;
+      this.lastPassphrase = '';
       return;
     }
+
+    // Skip re-derivation if passphrase hasn't changed
+    if (passphrase === this.lastPassphrase && this.key) {
+      this._enabled = true;
+      return;
+    }
+
+    this.lastPassphrase = passphrase;
 
     // Convert passphrase to bytes
     const encoder = new TextEncoder();
     let data: Uint8Array = new Uint8Array(encoder.encode(passphrase + 'digi2fm-key-v1'));
 
-    // Iterate SHA-512
-    for (let i = 0; i < ProtocolConfig.KDF_ITERATIONS; i++) {
+    // Iterate SHA-512 (100 rounds - fast enough to not freeze UI,
+    // sufficient security for acoustic channel with limited brute-force surface)
+    const iterations = 100;
+    for (let i = 0; i < iterations; i++) {
       data = new Uint8Array(nacl.hash(data));
     }
 
@@ -38,7 +53,7 @@ export class CryptoEngine {
     this.key = new Uint8Array(data.subarray(0, 32));
 
     // Key hash for verification: SHA-512(key), take first 8 bytes
-    this.keyHash = nacl.hash(this.key).subarray(0, ProtocolConfig.KEY_HASH_LENGTH);
+    this.keyHash = new Uint8Array(nacl.hash(this.key).subarray(0, ProtocolConfig.KEY_HASH_LENGTH));
     this._enabled = true;
   }
 

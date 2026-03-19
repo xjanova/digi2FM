@@ -3,7 +3,8 @@ import { detectBit } from './SpectrumAnalyzer';
 import { SyncDetector } from '../protocol/SyncDetector';
 import { bitsToBytes } from '../codec/BinaryDecoder';
 import { parsePacket } from '../protocol/PacketParser';
-import { Packet } from '../types';
+import { decodeBits } from '../codec/ErrorCorrection';
+import { Packet, ErrorCorrectionMode } from '../types';
 
 export type DemodulatorCallback = (packet: Packet) => void;
 export type SignalCallback = (detected: boolean, markEnergy: number, spaceEnergy: number) => void;
@@ -30,6 +31,12 @@ export class FskDemodulator {
   private synced: boolean = false;
   private packetsReceived: number = 0;
   private silentBitCount: number = 0;
+  private errorCorrection: ErrorCorrectionMode = 'none';
+
+  // Clock recovery: track bit transitions during preamble to calibrate samplesPerBit
+  private preambleBitCount: number = 0;
+  private lastBit: number = -1;
+  private nominalSamplesPerBit: number;
 
   // Callbacks
   private onPacket?: DemodulatorCallback;
@@ -39,13 +46,16 @@ export class FskDemodulator {
     baudRate: number = ProtocolConfig.DEFAULT_BAUD_RATE,
     markFreq: number = ProtocolConfig.MARK_FREQ,
     spaceFreq: number = ProtocolConfig.SPACE_FREQ,
-    sampleRate: number = ProtocolConfig.SAMPLE_RATE
+    sampleRate: number = ProtocolConfig.SAMPLE_RATE,
+    errorCorrection: ErrorCorrectionMode = 'none'
   ) {
     this.sampleRate = sampleRate;
     this.baudRate = baudRate;
     this.markFreq = markFreq;
     this.spaceFreq = spaceFreq;
     this.samplesPerBit = Math.round(sampleRate / baudRate);
+    this.errorCorrection = errorCorrection;
+    this.nominalSamplesPerBit = this.samplesPerBit;
     this.syncDetector = new SyncDetector();
 
     // Ring buffer: 4 seconds of audio (enough headroom)
@@ -111,10 +121,19 @@ export class FskDemodulator {
       this.silentBitCount = 0;
 
       if (!this.synced) {
+        // Track preamble bit transitions for clock recovery
+        if (result.bit !== this.lastBit && this.lastBit !== -1) {
+          this.preambleBitCount++;
+        }
+        this.lastBit = result.bit;
+
         const found = this.syncDetector.feedBit(result.bit);
         if (found) {
           this.synced = true;
           this.receivedBits = [];
+          // Reset clock recovery counters for next sync
+          this.preambleBitCount = 0;
+          this.lastBit = -1;
         }
       } else {
         this.receivedBits.push(result.bit);
@@ -133,8 +152,11 @@ export class FskDemodulator {
   }
 
   private tryParsePacket() {
+    // Apply error correction decoding before UART parsing
+    const correctedBits = decodeBits(this.receivedBits, this.errorCorrection);
+
     // Convert UART-framed bits to bytes
-    const bytes = bitsToBytes(this.receivedBits);
+    const bytes = bitsToBytes(correctedBits);
     if (bytes.length < 2) return;
 
     // Read expected length from first 2 bytes
@@ -182,6 +204,18 @@ export class FskDemodulator {
     this.synced = false;
     this.receivedBits = [];
     this.syncDetector.reset();
+    this.preambleBitCount = 0;
+    this.lastBit = -1;
+    // Reset samplesPerBit to nominal (will be re-calibrated on next preamble)
+    this.samplesPerBit = this.nominalSamplesPerBit;
+  }
+
+  /**
+   * Flush the sample buffer without resetting sync state.
+   * Used after transmitting to discard echo samples.
+   */
+  flushBuffer() {
+    this.bufferReadPos = this.bufferWritePos;
   }
 
   reset() {

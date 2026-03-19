@@ -5,9 +5,8 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { TransferSession } from '../protocol/TransferSession';
 import { TransferState, AppSettings } from '../types';
 import { setupAudioMode } from '../utils/PermissionUtils';
-import { RECORDING_PRESET, wavBase64ToFloat32 } from '../utils/AudioUtils';
+import { getRecordingOptions, audioBase64ToFloat32 } from '../utils/AudioUtils';
 
-// Max consecutive errors before giving up
 const MAX_POLL_ERRORS = 10;
 
 export function useReceiver(settings: AppSettings) {
@@ -27,7 +26,6 @@ export function useReceiver(settings: AppSettings) {
   const errorCountRef = useRef(0);
 
   const getEngine = useCallback(() => {
-    // Recreate engine if settings changed
     if (engineRef.current) {
       engineRef.current.dispose();
       engineRef.current = null;
@@ -35,7 +33,8 @@ export function useReceiver(settings: AppSettings) {
     engineRef.current = new AudioEngine(
       settings.baudRate,
       settings.markFreq,
-      settings.spaceFreq
+      settings.spaceFreq,
+      settings.errorCorrection
     );
     return engineRef.current;
   }, [settings.baudRate, settings.markFreq, settings.spaceFreq]);
@@ -52,16 +51,14 @@ export function useReceiver(settings: AppSettings) {
       setReceivedFilePath(filePath);
     });
 
-    // Start the demodulator
     session.startReceive();
     activeRef.current = true;
     errorCountRef.current = 0;
 
-    // Start overlapping recordings to minimize audio gaps.
-    // We keep one "active" recording running while processing the previous one.
+    // Use single continuous recording (no overlapping - expo-av only supports one)
     try {
       const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(RECORDING_PRESET);
+      await recording.prepareToRecordAsync(getRecordingOptions());
       await recording.startAsync();
       recordingRef.current = recording;
 
@@ -69,34 +66,31 @@ export function useReceiver(settings: AppSettings) {
         if (!activeRef.current) return;
 
         try {
-          // Start a NEW recording BEFORE stopping the old one to minimize gap
-          const nextRecording = new Audio.Recording();
-          await nextRecording.prepareToRecordAsync(RECORDING_PRESET);
-          await nextRecording.startAsync();
-
-          // Now stop the previous recording
+          // Stop current recording, process it, start a new one
           const prevRecording = recordingRef.current;
+          if (!prevRecording) return;
+
+          await prevRecording.stopAndUnloadAsync();
+          const uri = prevRecording.getURI();
+
+          // Start new recording immediately after stopping
+          const nextRecording = new Audio.Recording();
+          await nextRecording.prepareToRecordAsync(getRecordingOptions());
+          await nextRecording.startAsync();
           recordingRef.current = nextRecording;
 
-          if (prevRecording) {
-            await prevRecording.stopAndUnloadAsync();
-            const uri = prevRecording.getURI();
-
-            // Process the captured audio
-            if (uri) {
-              const base64 = await LegacyFileSystem.readAsStringAsync(uri, {
-                encoding: LegacyFileSystem.EncodingType.Base64,
-              });
-              const samples = wavBase64ToFloat32(base64);
-              if (samples && samples.length > 0) {
-                engine.feedSamples(samples);
-              }
-              // Clean up temp file
-              await LegacyFileSystem.deleteAsync(uri, { idempotent: true });
+          // Process previous recording
+          if (uri) {
+            const base64 = await LegacyFileSystem.readAsStringAsync(uri, {
+              encoding: LegacyFileSystem.EncodingType.Base64,
+            });
+            const samples = audioBase64ToFloat32(base64);
+            if (samples && samples.length > 0) {
+              engine.feedSamples(samples);
             }
+            await LegacyFileSystem.deleteAsync(uri, { idempotent: true });
           }
 
-          // Reset error counter on success
           errorCountRef.current = 0;
         } catch (err) {
           errorCountRef.current++;
@@ -128,23 +122,18 @@ export function useReceiver(settings: AppSettings) {
   const stopListening = useCallback(async () => {
     activeRef.current = false;
 
-    // Stop polling
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
 
-    // Stop recording
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
-      } catch {
-        // Already stopped
-      }
+      } catch { /* already stopped */ }
       recordingRef.current = null;
     }
 
-    // Stop session
     sessionRef.current?.stop();
     engineRef.current?.stopReceiving();
 
@@ -164,4 +153,3 @@ export function useReceiver(settings: AppSettings) {
 
   return { state, receivedFilePath, startListening, stopListening, cleanup };
 }
-

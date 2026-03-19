@@ -2,7 +2,7 @@ import { AudioContext, AudioBufferSourceNode } from 'react-native-audio-api';
 import { ProtocolConfig } from '../constants/ProtocolConfig';
 import { FskModulator } from './FskModulator';
 import { FskDemodulator } from './FskDemodulator';
-import { Packet } from '../types';
+import { Packet, ErrorCorrectionMode } from '../types';
 
 type OnPacketCallback = (packet: Packet) => void;
 type OnSignalCallback = (detected: boolean, markEnergy: number, spaceEnergy: number) => void;
@@ -33,13 +33,14 @@ export class AudioEngine {
   constructor(
     baudRate: number = ProtocolConfig.DEFAULT_BAUD_RATE,
     markFreq: number = ProtocolConfig.MARK_FREQ,
-    spaceFreq: number = ProtocolConfig.SPACE_FREQ
+    spaceFreq: number = ProtocolConfig.SPACE_FREQ,
+    errorCorrection: ErrorCorrectionMode = 'none'
   ) {
     this.baudRate = baudRate;
     this.markFreq = markFreq;
     this.spaceFreq = spaceFreq;
-    this.modulator = new FskModulator(baudRate, markFreq, spaceFreq);
-    this.demodulator = new FskDemodulator(baudRate, markFreq, spaceFreq);
+    this.modulator = new FskModulator(baudRate, markFreq, spaceFreq, ProtocolConfig.SAMPLE_RATE, errorCorrection);
+    this.demodulator = new FskDemodulator(baudRate, markFreq, spaceFreq, ProtocolConfig.SAMPLE_RATE, errorCorrection);
   }
 
   private ensureContext(): AudioContext {
@@ -139,12 +140,15 @@ export class AudioEngine {
 
   /**
    * Transmit a single packet (for control packets like ACK, CONNECT).
-   * Briefly pauses receive to avoid echo, resumes after turnaround delay.
+   * Pauses demodulator during transmit to prevent self-echo, then flushes
+   * the demodulator buffer and resumes after turnaround delay.
    */
   async transmitSinglePacket(packetBytes: Uint8Array): Promise<void> {
     const ctx = this.ensureContext();
-    const wasReceiving = this.isReceiving;
 
+    // Pause receiving to prevent self-echo contamination
+    const wasReceiving = this.isReceiving;
+    this.isReceiving = false;
     this.isTransmitting = true;
     this.modulator.reset();
 
@@ -155,6 +159,11 @@ export class AudioEngine {
     } finally {
       this.isTransmitting = false;
       this.currentSource = null;
+      // Flush demodulator buffer to discard any echo samples captured during TX
+      if (wasReceiving) {
+        this.demodulator.flushBuffer();
+        this.isReceiving = true;
+      }
     }
   }
 

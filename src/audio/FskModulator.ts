@@ -2,6 +2,8 @@ import { ProtocolConfig } from '../constants/ProtocolConfig';
 import { generateToneSamples, generateSilenceMs } from './ToneGenerator';
 import { bytesToBits } from '../codec/BinaryEncoder';
 import { generatePreamble } from '../protocol/PacketFramer';
+import { encodeBits } from '../codec/ErrorCorrection';
+import { ErrorCorrectionMode } from '../types';
 
 /**
  * FSK Modulator - converts bit streams to audio samples
@@ -14,18 +16,21 @@ export class FskModulator {
   private spaceFreq: number;
   private samplesPerBit: number;
   private phase: number = 0;
+  private errorCorrection: ErrorCorrectionMode = 'none';
 
   constructor(
     baudRate: number = ProtocolConfig.DEFAULT_BAUD_RATE,
     markFreq: number = ProtocolConfig.MARK_FREQ,
     spaceFreq: number = ProtocolConfig.SPACE_FREQ,
-    sampleRate: number = ProtocolConfig.SAMPLE_RATE
+    sampleRate: number = ProtocolConfig.SAMPLE_RATE,
+    errorCorrection: ErrorCorrectionMode = 'none'
   ) {
     this.sampleRate = sampleRate;
     this.baudRate = baudRate;
     this.markFreq = markFreq;
     this.spaceFreq = spaceFreq;
     this.samplesPerBit = Math.round(sampleRate / baudRate);
+    this.errorCorrection = errorCorrection;
   }
 
   /**
@@ -60,7 +65,10 @@ export class FskModulator {
     const preambleBits = generatePreamble();
 
     // Convert packet bytes to UART-framed bits
-    const dataBits = bytesToBits(packetBytes);
+    let dataBits = bytesToBits(packetBytes);
+
+    // Apply error correction encoding
+    dataBits = encodeBits(dataBits, this.errorCorrection);
 
     // Combine
     const allBits = [...preambleBits, ...dataBits];

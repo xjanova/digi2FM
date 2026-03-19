@@ -22,7 +22,8 @@ export function useTransmitter(settings: AppSettings) {
     engineRef.current = new AudioEngine(
       settings.baudRate,
       settings.markFreq,
-      settings.spaceFreq
+      settings.spaceFreq,
+      settings.errorCorrection
     );
     return engineRef.current;
   }, [settings.baudRate, settings.markFreq, settings.spaceFreq]);
