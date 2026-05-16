@@ -66,17 +66,36 @@ export function useSession(settings: AppSettings) {
   }, []);
 
   const startRecordingLoop = useCallback(async (engine: AudioEngine) => {
-    await setupAudioMode();
+    try {
+      await setupAudioMode();
+    } catch (err: any) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: err?.message || 'Failed to configure audio session',
+      }));
+      throw err;
+    }
+
     stopRecordingLoop();
 
-    const mic = new MicCapture();
-    micRef.current = mic;
-    mic.start(
-      (samples) => engine.feedSamples(samples),
-      (message) => {
-        console.warn('[Digi2FM] Mic error:', message);
-      }
-    );
+    try {
+      const mic = new MicCapture();
+      micRef.current = mic;
+      mic.start(
+        (samples) => engine.feedSamples(samples),
+        (message) => {
+          setState((prev) => ({ ...prev, status: 'error', error: message }));
+        }
+      );
+    } catch (err: any) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: err?.message || 'Failed to start microphone',
+      }));
+      throw err;
+    }
   }, [stopRecordingLoop]);
 
   // ============ PUBLIC API ============

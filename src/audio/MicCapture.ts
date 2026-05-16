@@ -26,6 +26,7 @@ export class MicCapture {
 
     const recorder = new AudioRecorder();
     this.recorder = recorder;
+    let rateChecked = false;
 
     recorder.onError((event) => {
       this.onError?.(event?.message ?? 'Recorder error');
@@ -42,9 +43,21 @@ export class MicCapture {
       },
       (event) => {
         if (!this.active) return;
+        if (!rateChecked) {
+          rateChecked = true;
+          const actual = event.buffer.sampleRate;
+          if (actual !== ProtocolConfig.SAMPLE_RATE) {
+            // The demodulator's Goertzel is tuned to ProtocolConfig.SAMPLE_RATE;
+            // mismatched rates will shift detected frequencies and break decoding.
+            this.onError?.(
+              `Sample rate mismatch: device delivers ${actual}Hz, expected ${ProtocolConfig.SAMPLE_RATE}Hz`
+            );
+          }
+        }
         try {
           const samples = event.buffer.getChannelData(0);
-          // The buffer is reused by native code; copy before handing off.
+          // The native buffer is backed by shared memory; copy before handing
+          // off so subsequent native writes can't mutate our snapshot.
           this.onSamples?.(new Float32Array(samples));
         } catch (err: any) {
           this.onError?.(err?.message ?? 'Failed to read mic buffer');

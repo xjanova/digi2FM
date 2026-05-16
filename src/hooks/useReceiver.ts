@@ -33,7 +33,16 @@ export function useReceiver(settings: AppSettings) {
   }, [settings.baudRate, settings.markFreq, settings.spaceFreq, settings.errorCorrection]);
 
   const startListening = useCallback(async () => {
-    await setupAudioMode();
+    try {
+      await setupAudioMode();
+    } catch (err: any) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: err?.message || 'Failed to configure audio session',
+      }));
+      return;
+    }
 
     const engine = getEngine();
     const session = new TransferSession(engine);
