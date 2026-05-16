@@ -33,12 +33,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Digi2FM needs microphone access to receive data transmitted as audio signals."
-        }
-      ],
       "react-native-audio-api"
     ]
   }

@@ -111,7 +111,6 @@ export interface AppSettings {
   markFreq: number;
   spaceFreq: number;
   errorCorrection: ErrorCorrectionMode;
-  volumeBoost: boolean;
   debugMode: boolean;
   encryptionEnabled: boolean;
   encryptionPassphrase: string;

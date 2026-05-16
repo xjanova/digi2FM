@@ -12,7 +12,6 @@
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/native": "^7.1.33",
     "expo": "~55.0.7",
-    "expo-av": "^16.0.8",
     "expo-document-picker": "^55.0.9",
     "expo-file-system": "^55.0.11",
     "expo-sharing": "^55.0.12",

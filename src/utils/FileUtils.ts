@@ -92,13 +92,16 @@ export async function saveFile(
 }
 
 /**
- * Share a file
+ * Share a file via the system share sheet. Throws if sharing is
+ * unavailable on this platform so the caller can surface feedback to
+ * the user.
  */
 export async function shareFile(uri: string): Promise<void> {
   const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(uri);
+  if (!canShare) {
+    throw new Error('Sharing is not available on this device');
   }
+  await Sharing.shareAsync(uri);
 }
 
 /**
