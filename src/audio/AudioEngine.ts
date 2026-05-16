@@ -14,9 +14,9 @@ type OnProgressCallback = (packetIndex: number) => void;
  *
  * Transmit: Uses AudioBufferSourceNode with PCM samples from FskModulator.
  * Receive: Demodulator callbacks are set here; actual mic recording is
- *          managed externally (e.g. in useReceiver) because expo-av
- *          provides the recording interface. Call feedSamples() to push
- *          captured audio into the demodulator.
+ *          managed externally (see MicCapture, driven from useReceiver /
+ *          useSession). Call feedSamples() to push captured PCM into the
+ *          demodulator.
  */
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
