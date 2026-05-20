@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts as useGrotesk,
   SpaceGrotesk_400Regular,
@@ -86,12 +87,16 @@ function ThemedRoot() {
 
 export default function App() {
   return (
-    <SettingsProvider>
-      <ThemeProvider>
-        <UpdateProvider>
-          <ThemedRoot />
-        </UpdateProvider>
-      </ThemeProvider>
-    </SettingsProvider>
+    // SafeAreaProvider must wrap everything so child screens / headers can
+    // read insets for notches and bottom home bars.
+    <SafeAreaProvider>
+      <SettingsProvider>
+        <ThemeProvider>
+          <UpdateProvider>
+            <ThemedRoot />
+          </UpdateProvider>
+        </ThemeProvider>
+      </SettingsProvider>
+    </SafeAreaProvider>
   );
 }

@@ -32,9 +32,25 @@ export default function ReceiveScreen() {
   const handleStart = async () => {
     if (!hasPermission) {
       const granted = await requestPermission();
-      if (!granted) return;
+      if (!granted) {
+        // Without a microphone, this screen can't function. Surface that
+        // instead of silently dropping the tap.
+        Alert.alert(
+          'Microphone required',
+          'Digi2FM needs microphone access to listen for incoming signals. Enable it in system Settings.'
+        );
+        return;
+      }
     }
     await startListening();
+  };
+
+  // "Listen again" after a completed receive: reset state, then start a
+  // fresh listening session in one tap. Calling stopListening alone would
+  // leave the user on the idle screen having to tap "Start listening" again.
+  const handleListenAgain = async () => {
+    await stopListening();
+    await handleStart();
   };
 
   const handleShare = async () => {
@@ -207,7 +223,7 @@ export default function ReceiveScreen() {
       )}
       {stage === 'done' && (
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <GlowButton variant="secondary" onPress={stopListening}>Listen again</GlowButton>
+          <GlowButton variant="secondary" onPress={handleListenAgain}>Listen again</GlowButton>
           <View style={{ flex: 1 }}>
             <GlowButton variant="primary" full onPress={handleShare}>
               Share / Open

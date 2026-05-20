@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTransmitter } from '../hooks/useTransmitter';
@@ -35,6 +35,26 @@ export default function SendScreen() {
 
   const transmitting = !['idle', 'completed', 'error'].includes(state.status);
   const done = state.status === 'completed';
+
+  // The transmitter hook doesn't expose elapsed time, so track it locally:
+  // start a wall-clock timer when transmission begins, clear when it ends.
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  useEffect(() => {
+    if (!transmitting) {
+      startedAtRef.current = null;
+      setElapsedSec(0);
+      return;
+    }
+    startedAtRef.current = Date.now();
+    setElapsedSec(0);
+    const iv = setInterval(() => {
+      if (startedAtRef.current != null) {
+        setElapsedSec(Math.max(0, (Date.now() - startedAtRef.current) / 1000));
+      }
+    }, 500);
+    return () => clearInterval(iv);
+  }, [transmitting]);
 
   const handlePick = async () => {
     const f = await pickFile();
@@ -141,11 +161,7 @@ export default function SendScreen() {
             <Stat
               big
               label="ELAPSED"
-              value={state.estimatedTimeRemaining != null && stats
-                ? formatDuration(Math.max(0,
-                    (Number(stats.eta.replace(/[^\d.]/g, '')) || 0) - state.estimatedTimeRemaining))
-                : '--:--'
-              }
+              value={elapsedSec > 0 ? formatDuration(elapsedSec) : '--:--'}
             />
             <Stat
               big

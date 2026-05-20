@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import SessionScreen from '../screens/SessionScreen';
 import SendScreen from '../screens/SendScreen';
@@ -22,11 +23,15 @@ const SHORT_LABELS: Record<TabId, string> = {
 /** Custom app header bar — shows brand mark + Bell·202 status. */
 function AppHeader() {
   const { accent, palette } = useTheme();
+  // Respect the notch / status bar so the header sits below the system UI
+  // on iPhones with a Dynamic Island and Android devices with a punch-hole.
+  const insets = useSafeAreaInsets();
   return (
     <View
       style={{
-        height: 44,
+        paddingTop: insets.top,
         paddingHorizontal: 20,
+        paddingBottom: 8,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -101,6 +106,9 @@ function makeTabOptions(id: TabId, accentColor: string, dimColor: string) {
 
 export default function AppNavigator() {
   const { accent, palette } = useTheme();
+  // Bottom inset for devices with a home indicator (iPhone X+) / gesture
+  // nav bar — pad the tab bar so labels don't sit under it.
+  const insets = useSafeAreaInsets();
   return (
     <>
       <AppHeader />
@@ -114,8 +122,8 @@ export default function AppNavigator() {
             borderTopColor: palette.border,
             borderTopWidth: 1,
             paddingTop: 8,
-            paddingBottom: 12,
-            height: 64,
+            paddingBottom: Math.max(12, insets.bottom),
+            height: 56 + Math.max(12, insets.bottom),
           },
         }}
       >

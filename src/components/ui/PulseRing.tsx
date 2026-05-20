@@ -31,15 +31,21 @@ export default function PulseRing({ active = true, size = 220, label = 'LISTENIN
       breath.setValue(1);
       return;
     }
-    const loops = rings.map((v, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 800),
-          Animated.timing(v, { toValue: 1, duration: 2400, useNativeDriver: true }),
-        ])
-      )
+
+    // IMPORTANT: each ring is its own 2.4s loop; the stagger is a *one-shot*
+    // setTimeout that delays the start. Putting Animated.delay inside the loop
+    // sequence would re-apply on every iteration and the rings would drift
+    // (periods 2.4s / 3.2s / 4.0s instead of all 2.4s with offset starts).
+    const startedLoops: Animated.CompositeAnimation[] = [];
+    const startTimers: ReturnType<typeof setTimeout>[] = rings.map((v, i) =>
+      setTimeout(() => {
+        const loop = Animated.loop(
+          Animated.timing(v, { toValue: 1, duration: 2400, useNativeDriver: true })
+        );
+        startedLoops.push(loop);
+        loop.start();
+      }, i * 800)
     );
-    loops.forEach((l) => l.start());
 
     const breathLoop = Animated.loop(
       Animated.sequence([
@@ -50,7 +56,8 @@ export default function PulseRing({ active = true, size = 220, label = 'LISTENIN
     breathLoop.start();
 
     return () => {
-      loops.forEach((l) => l.stop());
+      startTimers.forEach(clearTimeout);
+      startedLoops.forEach((l) => l.stop());
       breathLoop.stop();
     };
   }, [active, rings, breath]);

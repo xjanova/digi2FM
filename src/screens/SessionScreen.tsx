@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { useSession } from '../hooks/useSession';
 import { useAudioPermissions } from '../hooks/useAudioPermissions';
@@ -262,12 +262,17 @@ export default function SessionScreen() {
                   </View>
                 </Card>
               ) : (
-                <View
-                  style={[
+                <Pressable
+                  style={({ pressed }) => [
                     styles.picker,
-                    { borderColor: palette.borderStrong },
+                    {
+                      borderColor: palette.borderStrong,
+                      opacity: pressed ? 0.7 : 1,
+                    },
                   ]}
-                  onTouchEnd={handlePickFile}
+                  onPress={handlePickFile}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select a file to send"
                 >
                   <Text style={[type.body, { color: palette.textMute }]}>
                     Tap to select a file
@@ -275,7 +280,7 @@ export default function SessionScreen() {
                   <Text style={[type.monoTiny, { color: palette.textDim, marginTop: 4 }]}>
                     ANY TYPE · UP TO 1 MB RECOMMENDED
                   </Text>
-                </View>
+                </Pressable>
               )}
 
               <SectionLabel
