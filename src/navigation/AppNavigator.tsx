@@ -1,67 +1,145 @@
 import React from 'react';
+import { Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import SessionScreen from '../screens/SessionScreen';
 import SendScreen from '../screens/SendScreen';
 import ReceiveScreen from '../screens/ReceiveScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { useTheme } from '../theme/ThemeContext';
+import { fonts } from '../theme/tokens';
+import TabBarIcon, { TabId } from '../components/ui/TabBarIcon';
 
 const Tab = createBottomTabNavigator();
 
-const icons: Record<string, string> = {
-  Session: '🔗',
-  Send: '📡',
-  Receive: '📻',
-  Settings: '⚙️',
+const SHORT_LABELS: Record<TabId, string> = {
+  Session: 'SESS',
+  Send: 'TX',
+  Receive: 'RX',
+  Settings: 'CFG',
 };
 
-const TabIcon = ({ label, color }: { label: string; color: string }) => (
-  <Text style={{ color, fontSize: 20 }}>{icons[label] || '?'}</Text>
-);
-
-export default function AppNavigator() {
+/** Custom app header bar — shows brand mark + Bell·202 status. */
+function AppHeader() {
+  const { accent, palette } = useTheme();
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: '#1a1a2e' },
-        headerTintColor: '#e0e0e0',
-        tabBarStyle: { backgroundColor: '#1a1a2e', borderTopColor: '#333' },
-        tabBarActiveTintColor: '#00d4ff',
-        tabBarInactiveTintColor: '#666',
+    <View
+      style={{
+        height: 44,
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottomWidth: 1,
+        borderBottomColor: palette.border,
+        backgroundColor: 'rgba(0,0,0,0.3)',
       }}
     >
-      <Tab.Screen
-        name="Session"
-        component={SessionScreen}
-        options={{
-          title: 'Session',
-          tabBarIcon: ({ color }) => <TabIcon label="Session" color={color} />,
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View
+          style={{
+            width: 22, height: 22, borderRadius: 6,
+            backgroundColor: accent.soft,
+            borderWidth: 1, borderColor: accent.base,
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Svg width={10} height={10} viewBox="0 0 12 12">
+            <Path d="M1 6 c1.5 -2 4 -2 5 0 s3.5 2 5 0" stroke={accent.base}
+              strokeWidth={1.4} fill="none" strokeLinecap="round" />
+          </Svg>
+        </View>
+        <Text style={{
+          fontFamily: fonts.monoBold, fontSize: 13, letterSpacing: 0.8, color: palette.text,
+        }}>
+          digi2fm
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View
+          style={{
+            width: 6, height: 6, borderRadius: 3,
+            backgroundColor: palette.success,
+            shadowColor: palette.success,
+            shadowOpacity: 0.7,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 2,
+          }}
+        />
+        <Text style={{
+          fontFamily: fonts.mono, fontSize: 10, color: palette.textDim, letterSpacing: 1.0,
+        }}>
+          BELL·202
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/** Single source of truth for the per-screen tab options. */
+function makeTabOptions(id: TabId, accentColor: string, dimColor: string) {
+  return {
+    headerShown: false,
+    tabBarShowLabel: true,
+    tabBarLabel: ({ focused }: { focused: boolean }) => (
+      <Text
+        style={{
+          fontFamily: fonts.mono, fontSize: 9, letterSpacing: 1.4,
+          color: focused ? accentColor : dimColor,
+          marginTop: 2,
         }}
-      />
-      <Tab.Screen
-        name="Send"
-        component={SendScreen}
-        options={{
-          title: 'Send',
-          tabBarIcon: ({ color }) => <TabIcon label="Send" color={color} />,
+      >
+        {SHORT_LABELS[id]}
+      </Text>
+    ),
+    tabBarIcon: ({ focused }: { focused: boolean }) => (
+      <TabBarIcon id={id} color={focused ? accentColor : dimColor} />
+    ),
+  };
+}
+
+export default function AppNavigator() {
+  const { accent, palette } = useTheme();
+  return (
+    <>
+      <AppHeader />
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: accent.base,
+          tabBarInactiveTintColor: palette.textDim,
+          tabBarStyle: {
+            backgroundColor: 'rgba(7,9,14,0.95)',
+            borderTopColor: palette.border,
+            borderTopWidth: 1,
+            paddingTop: 8,
+            paddingBottom: 12,
+            height: 64,
+          },
         }}
-      />
-      <Tab.Screen
-        name="Receive"
-        component={ReceiveScreen}
-        options={{
-          title: 'Receive',
-          tabBarIcon: ({ color }) => <TabIcon label="Receive" color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <TabIcon label="Settings" color={color} />,
-        }}
-      />
-    </Tab.Navigator>
+      >
+        <Tab.Screen
+          name="Session"
+          component={SessionScreen}
+          options={makeTabOptions('Session', accent.base, palette.textDim)}
+        />
+        <Tab.Screen
+          name="Send"
+          component={SendScreen}
+          options={makeTabOptions('Send', accent.base, palette.textDim)}
+        />
+        <Tab.Screen
+          name="Receive"
+          component={ReceiveScreen}
+          options={makeTabOptions('Receive', accent.base, palette.textDim)}
+        />
+        <Tab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={makeTabOptions('Settings', accent.base, palette.textDim)}
+        />
+      </Tab.Navigator>
+    </>
   );
 }

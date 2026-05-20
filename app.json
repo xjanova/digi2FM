@@ -34,7 +34,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "react-native-audio-api"
+      "react-native-audio-api",
+      "expo-font"
     ]
   }
 }

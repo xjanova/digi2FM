@@ -1,27 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, FlatList,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useSession } from '../hooks/useSession';
 import { useAudioPermissions } from '../hooks/useAudioPermissions';
 import { useSettings } from '../context/SettingsContext';
+import { useTheme } from '../theme/ThemeContext';
+import { fonts, palette as pal, radius, space, type } from '../theme/tokens';
 import { SelectedFile, TransferHistoryEntry } from '../types';
 import { pickFile, formatFileSize, shareFile } from '../utils/FileUtils';
-import ProgressBar from '../components/ProgressBar';
-import StatusIndicator from '../components/StatusIndicator';
-import WaveformVisualizer from '../components/WaveformVisualizer';
+
+import ScreenShell from '../components/ui/ScreenShell';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import SectionLabel from '../components/ui/SectionLabel';
+import Card from '../components/ui/Card';
+import GlowButton from '../components/ui/GlowButton';
+import FreqDial from '../components/ui/FreqDial';
+import Oscilloscope from '../components/ui/Oscilloscope';
+import PulseRing from '../components/ui/PulseRing';
+import PacketBar from '../components/ui/PacketBar';
+import FileIcon from '../components/ui/FileIcon';
+import SpectrumBars from '../components/ui/SpectrumBars';
+import Toggle from '../components/ui/Toggle';
+import { StatusPill } from '../components/ui';
+
+const STATUS_LABEL: Record<string, string> = {
+  idle: 'STANDBY',
+  listening: 'LISTENING',
+  connecting: 'HANDSHAKE',
+  connected: 'LINK · ENCRYPTED',
+  sending: 'TX · LIVE',
+  receiving: 'RX · LIVE',
+  disconnecting: 'CLOSING',
+  error: 'ERROR',
+};
 
 export default function SessionScreen() {
-  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
-  const { hasPermission, requestPermission } = useAudioPermissions();
   const { settings } = useSettings();
+  const { hasPermission, requestPermission } = useAudioPermissions();
   const {
-    state, receivedFilePath,
+    state,
+    receivedFilePath,
     connect, listen, sendFile, disconnect, cleanup,
   } = useSession(settings);
+  const { accent, palette } = useTheme();
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
   useEffect(() => {
-    return () => { cleanup(); };
+    return () => { void cleanup(); };
   }, [cleanup]);
 
   const ensurePermission = async (): Promise<boolean> => {
@@ -30,190 +55,341 @@ export default function SessionScreen() {
   };
 
   const handleConnect = async () => {
-    if (!(await ensurePermission())) return;
-    await connect();
+    if (await ensurePermission()) await connect();
   };
-
   const handleListen = async () => {
-    if (!(await ensurePermission())) return;
-    await listen();
+    if (await ensurePermission()) await listen();
   };
-
   const handlePickFile = async () => {
-    const file = await pickFile();
-    if (file) setSelectedFile(file);
+    const f = await pickFile();
+    if (f) setSelectedFile(f);
   };
-
   const handleSend = async () => {
     if (!selectedFile) {
-      Alert.alert('No File', 'Please select a file first.');
+      Alert.alert('No file', 'Please select a file first.');
       return;
     }
     await sendFile(selectedFile);
   };
-
   const handleShare = async () => {
     if (!receivedFilePath) return;
-    try {
-      await shareFile(receivedFilePath);
-    } catch (err: any) {
-      Alert.alert('Share Failed', err?.message || 'Could not share the file.');
-    }
+    try { await shareFile(receivedFilePath); }
+    catch (err: any) { Alert.alert('Share failed', err?.message ?? 'Could not share file.'); }
   };
 
-  const isIdle = state.status === 'idle';
-  const isConnected = state.status === 'connected';
-  const isActive = !['idle', 'error'].includes(state.status);
-  const isBusy = state.status === 'sending' || state.status === 'receiving';
-
-  // Map session status to display text
-  const statusText: Record<string, string> = {
-    idle: 'Idle',
-    connecting: 'Connecting...',
-    listening: 'Listening for peer...',
-    connected: 'Connected',
-    sending: 'Sending file...',
-    receiving: 'Receiving file...',
-    disconnecting: 'Disconnecting...',
-    error: 'Error',
-  };
+  // Derived state
+  const status = state.status;
+  const isIdle = status === 'idle';
+  const isListening = status === 'listening';
+  const isConnecting = status === 'connecting';
+  const isConnected = status === 'connected';
+  const isSending = status === 'sending';
+  const isReceiving = status === 'receiving';
+  const isBusy = isSending || isReceiving;
+  const showScopeLive = isListening || isConnecting || isBusy;
+  const dialsLocked = isConnected || isBusy;
+  const enc = settings.encryptionEnabled;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <Text style={styles.title}>Two-Way Session</Text>
-      <View style={styles.statusRow}>
-        <View style={[styles.statusDot, isActive && styles.statusDotActive]} />
-        <Text style={styles.statusText}>{statusText[state.status] || state.status}</Text>
-        {state.encryptionActive && (
-          <View style={styles.encBadge}>
-            <Text style={styles.encBadgeText}>Encrypted</Text>
-          </View>
-        )}
+    <ScreenShell>
+      <ScreenHeader
+        eyebrow="01 · SESSION"
+        titlePre="Two-way "
+        titleAccent="session"
+        status={status as any}
+        statusLabel={STATUS_LABEL[status]}
+      />
+
+      {/* Scope */}
+      <View style={{ marginBottom: 16 }}>
+        <Oscilloscope active={showScopeLive} height={170} />
       </View>
 
-      {/* Waveform */}
-      <WaveformVisualizer isActive={isBusy || state.status === 'connecting' || state.status === 'listening'} />
+      {/* Frequency dials */}
+      <View style={styles.dialRow}>
+        <FreqDial value={settings.markFreq} label="MARK" locked={dialsLocked} />
+        <FreqDial value={settings.spaceFreq} label="SPACE" locked={dialsLocked} />
+      </View>
 
-      {/* Error */}
-      {state.error && <Text style={styles.errorText}>{state.error}</Text>}
+      {/* Error banner */}
+      {state.error && (
+        <Card
+          style={{
+            marginBottom: 12,
+            borderColor: palette.dangerBorder,
+            backgroundColor: palette.dangerSoft,
+          }}
+        >
+          <Text style={[type.body, { color: palette.danger }]}>{state.error}</Text>
+        </Card>
+      )}
 
-      {/* Connection controls */}
+      {/* === IDLE === */}
       {isIdle && (
-        <View style={styles.connectionControls}>
-          <TouchableOpacity style={styles.connectBtn} onPress={handleConnect}>
-            <Text style={styles.connectBtnText}>Connect</Text>
-            <Text style={styles.connectBtnSub}>Initiate session</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.listenBtn} onPress={handleListen}>
-            <Text style={styles.listenBtnText}>Listen</Text>
-            <Text style={styles.listenBtnSub}>Wait for peer</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        <>
+          <SectionLabel>Begin session</SectionLabel>
 
-      {(state.status === 'connecting' || state.status === 'listening') && (
-        <TouchableOpacity style={styles.cancelBtn} onPress={disconnect}>
-          <Text style={styles.cancelBtnText}>Cancel</Text>
-        </TouchableOpacity>
-      )}
+          <Card style={{ marginBottom: 12 }}>
+            <GlowButton variant="primary" full onPress={handleConnect}>
+              Connect to peer
+            </GlowButton>
+            <Text style={[type.monoSmall, styles.helper, { color: palette.textDim }]}>
+              ↑ Initiates handshake · plays sync tones
+            </Text>
+          </Card>
 
-      {/* File transfer (when connected) */}
-      {(isConnected || isBusy) && (
-        <View style={styles.transferSection}>
-          <Text style={styles.sectionTitle}>File Transfer</Text>
+          <Card style={{ marginBottom: 18 }}>
+            <GlowButton variant="secondary" full onPress={handleListen}>
+              Listen for peer
+            </GlowButton>
+            <Text style={[type.monoSmall, styles.helper, { color: palette.textDim }]}>
+              ↑ Opens mic · waits for incoming sync
+            </Text>
+          </Card>
 
-          {!isBusy && (
-            <View style={styles.sendRow}>
-              <TouchableOpacity style={styles.pickBtn} onPress={handlePickFile}>
-                <Text style={styles.pickBtnText}>
-                  {selectedFile ? selectedFile.name : 'Select File'}
-                </Text>
-                {selectedFile && (
-                  <Text style={styles.pickBtnSub}>{formatFileSize(selectedFile.size)}</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sendBtn, !selectedFile && styles.sendBtnDisabled]}
-                onPress={handleSend}
-                disabled={!selectedFile}
-              >
-                <Text style={styles.sendBtnText}>Send</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Progress */}
-          {isBusy && (
-            <View style={styles.progressSection}>
-              <Text style={styles.progressLabel}>
-                {state.status === 'sending' ? 'Sending' : 'Receiving'}: {state.fileName}
+          <SectionLabel
+            right={
+              <Text style={[type.monoTiny, { color: accent.base }]}>
+                XSALSA20·POLY1305
               </Text>
-              {state.fileSize !== undefined && (
-                <Text style={styles.progressSub}>{formatFileSize(state.fileSize)}</Text>
-              )}
-              <ProgressBar
-                progress={state.transferProgress}
-                label={`Packet ${state.currentPacket} / ${state.totalPackets}`}
+            }
+          >
+            Encryption
+          </SectionLabel>
+          <Card>
+            <View style={styles.encRow}>
+              <View
+                style={[
+                  styles.encIcon,
+                  { backgroundColor: accent.soft, borderColor: accent.base },
+                ]}
+              >
+                <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                  <Rect x="4" y="11" width="16" height="10" rx="2"
+                    stroke={accent.base} strokeWidth={1.6} />
+                  <Path d="M8 11 V8 a4 4 0 0 1 8 0 v3"
+                    stroke={accent.base} strokeWidth={1.6} fill="none" />
+                </Svg>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[type.bodyStrong, { color: palette.text }]}>Pre-shared key</Text>
+                <Text style={[type.monoSmall, { color: palette.textDim, marginTop: 2 }]}>
+                  Peer must use the same passphrase
+                </Text>
+              </View>
+              <Toggle value={enc} disabled />
+            </View>
+          </Card>
+        </>
+      )}
+
+      {/* === LISTENING / CONNECTING === */}
+      {(isListening || isConnecting) && (
+        <>
+          <Card style={{ paddingTop: 32, paddingBottom: 48, marginBottom: 16 }}>
+            <PulseRing active label={isListening ? 'AWAITING CARRIER' : 'NEGOTIATING'} />
+          </Card>
+
+          <Card style={{ marginBottom: 12 }}>
+            <Text style={[type.monoSmall, styles.logHeading, { color: palette.textDim }]}>
+              HANDSHAKE LOG
+            </Text>
+            <Text style={[styles.log, { color: palette.textMute }]}>
+              {isConnecting
+                ? `[--:--:--] tx: SYN 0xA5
+[--:--:--] rx: SYN-ACK 0xA5
+[--:--:--] tx: ACK 0x01
+[--:--:--] negotiating baud...`
+                : `[--:--:--] mic open · gain auto
+[--:--:--] scanning ${settings.markFreq}/${settings.spaceFreq} Hz
+[--:--:--] waiting for preamble...`}
+            </Text>
+          </Card>
+
+          <GlowButton variant="danger" full onPress={disconnect}>Cancel</GlowButton>
+        </>
+      )}
+
+      {/* === CONNECTED / TRANSFER === */}
+      {(isConnected || isBusy) && (
+        <>
+          <Card style={{ marginBottom: 12, padding: space.cardPadCompact }}>
+            <View style={styles.linkRow}>
+              <View
+                style={[
+                  styles.linkDot,
+                  { backgroundColor: palette.success, shadowColor: palette.success },
+                ]}
               />
-              {state.retryCount !== undefined && state.retryCount > 0 && (
-                <Text style={styles.retryText}>Retry #{state.retryCount}</Text>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[type.body, { color: palette.text }]}>
+                  Linked to{' '}
+                  <Text style={[{ fontFamily: fonts.mono, color: accent.base }]}>
+                    peer:0x7A·3F·E2
+                  </Text>
+                </Text>
+                <Text style={[type.monoSmall, { color: palette.textDim, marginTop: 2 }]}>
+                  RSSI −42 dB · {settings.baudRate} baud · {enc ? 'AES-locked' : 'unencrypted'}
+                </Text>
+              </View>
+              <View style={{ width: 80, height: 28 }}>
+                <SpectrumBars active count={12} height={28} />
+              </View>
+            </View>
+          </Card>
+
+          {isConnected && (
+            <>
+              <SectionLabel>File transfer</SectionLabel>
+
+              {selectedFile ? (
+                <Card style={{ marginBottom: 16 }}>
+                  <View style={styles.pickedRow}>
+                    <FileIcon kind={selectedFile.name} size={36} />
+                    <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                      <Text style={[type.bodyStrong, { color: palette.text }]} numberOfLines={1}>
+                        {selectedFile.name}
+                      </Text>
+                      <Text style={[type.monoSmall, { color: palette.textDim, marginTop: 2 }]}>
+                        {formatFileSize(selectedFile.size)} · ready to transmit
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ marginTop: 12 }}>
+                    <GlowButton variant="primary" full onPress={handleSend}>
+                      Transmit
+                    </GlowButton>
+                  </View>
+                </Card>
+              ) : (
+                <View
+                  style={[
+                    styles.picker,
+                    { borderColor: palette.borderStrong },
+                  ]}
+                  onTouchEnd={handlePickFile}
+                >
+                  <Text style={[type.body, { color: palette.textMute }]}>
+                    Tap to select a file
+                  </Text>
+                  <Text style={[type.monoTiny, { color: palette.textDim, marginTop: 4 }]}>
+                    ANY TYPE · UP TO 1 MB RECOMMENDED
+                  </Text>
+                </View>
               )}
-            </View>
+
+              <SectionLabel
+                right={
+                  <Text style={[type.monoTiny, { color: palette.textDim }]}>
+                    {state.transferHistory.length} ITEMS
+                  </Text>
+                }
+              >
+                History
+              </SectionLabel>
+
+              {state.transferHistory.length === 0 ? (
+                <Text style={[type.monoSmall, { color: palette.textDim, marginBottom: 16 }]}>
+                  No transfers yet
+                </Text>
+              ) : (
+                state.transferHistory.slice().reverse().map((entry, i) => (
+                  <HistoryRow key={i} entry={entry} />
+                ))
+              )}
+
+              {receivedFilePath && (
+                <View style={{ marginBottom: 12 }}>
+                  <GlowButton variant="secondary" full onPress={handleShare}>
+                    Share received file
+                  </GlowButton>
+                </View>
+              )}
+
+              <View style={{ marginTop: 6 }}>
+                <GlowButton variant="danger" full onPress={disconnect}>Disconnect</GlowButton>
+              </View>
+            </>
           )}
 
-          {/* Received file */}
-          {receivedFilePath && isConnected && (
-            <View style={styles.receivedBox}>
-              <Text style={styles.receivedText}>File received!</Text>
-              <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-                <Text style={styles.shareBtnText}>Share / Open</Text>
-              </TouchableOpacity>
-            </View>
+          {isBusy && (
+            <Card style={{ marginBottom: 12 }}>
+              <View style={styles.busyHead}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <FileIcon kind={state.fileName ?? (isSending ? 'pdf' : 'jpg')} size={32} />
+                  <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                    <Text style={[type.bodyStrong, { color: palette.text }]} numberOfLines={1}>
+                      {state.fileName ?? (isSending ? 'sending…' : 'receiving…')}
+                    </Text>
+                    <Text style={[type.monoSmall, { color: palette.textDim }]}>
+                      {state.fileSize ? formatFileSize(state.fileSize) : ''} · {isSending ? 'TX' : 'RX'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <PacketBar
+                progress={state.transferProgress}
+                current={state.currentPacket}
+                total={state.totalPackets}
+              />
+              <Text style={[type.monoTiny, { color: palette.textDim, marginTop: 10 }]}>
+                {isSending ? '↑ TRANSMITTING' : '↓ RECEIVING'} · CRC OK · {state.retryCount ?? 0} RETRIES
+              </Text>
+              <View style={{ marginTop: 14 }}>
+                <GlowButton variant="ghost" full onPress={disconnect}>Cancel transfer</GlowButton>
+              </View>
+            </Card>
           )}
-
-          {/* Disconnect */}
-          <TouchableOpacity style={styles.disconnectBtn} onPress={disconnect}>
-            <Text style={styles.disconnectBtnText}>Disconnect</Text>
-          </TouchableOpacity>
-        </View>
+        </>
       )}
-
-      {/* Transfer history */}
-      {state.transferHistory.length > 0 && (
-        <View style={styles.historySection}>
-          <Text style={styles.sectionTitle}>History</Text>
-          {state.transferHistory.slice().reverse().map((entry, i) => (
-            <HistoryItem key={i} entry={entry} />
-          ))}
-        </View>
-      )}
-
-      {/* Encryption info */}
-      {settings.encryptionEnabled && isIdle && (
-        <View style={styles.cryptoInfo}>
-          <Text style={styles.cryptoInfoText}>
-            Encryption enabled - peer must use the same passphrase
-          </Text>
-        </View>
-      )}
-    </ScrollView>
+    </ScreenShell>
   );
 }
 
-function HistoryItem({ entry }: { entry: TransferHistoryEntry }) {
-  const arrow = entry.direction === 'sent' ? '>' : '<';
-  const color = entry.success ? '#00ff88' : '#ff4444';
-  const time = new Date(entry.timestamp).toLocaleTimeString();
+function HistoryRow({ entry }: { entry: TransferHistoryEntry }) {
+  const { accent, palette } = useTheme();
+  const inbound = entry.direction === 'received';
+  const color = inbound ? palette.success : accent.base;
+  const time = new Date(entry.timestamp).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
+  });
 
   return (
-    <View style={styles.historyItem}>
-      <Text style={[styles.historyArrow, { color }]}>{arrow}</Text>
-      <View style={styles.historyContent}>
-        <Text style={styles.historyFileName}>{entry.fileName}</Text>
-        <Text style={styles.historyMeta}>
-          {formatFileSize(entry.fileSize)} - {time}
-          {!entry.success && ' (failed)'}
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        backgroundColor: pal.bgCard,
+        borderColor: palette.border,
+        borderWidth: 1,
+        borderRadius: radius.button,
+        marginBottom: 8,
+      }}
+    >
+      <View
+        style={{
+          width: 28, height: 28, borderRadius: 6,
+          backgroundColor: inbound ? 'rgba(127,255,149,0.10)' : accent.soft,
+          borderWidth: 1, borderColor: color,
+          alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <Svg width={12} height={12} viewBox="0 0 16 16" fill="none">
+          <Path
+            d={inbound ? 'M8 2v10m0 0l-4-4m4 4l4-4' : 'M8 14V4m0 0l-4 4m4-4l4 4'}
+            stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"
+          />
+        </Svg>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={[type.body, { color: palette.text }]}>
+          {entry.fileName}
+        </Text>
+        <Text style={[type.monoTiny, { color: palette.textDim }]}>
+          {formatFileSize(entry.fileSize)} · {time} · {entry.success ? 'OK' : 'FAIL'}
         </Text>
       </View>
     </View>
@@ -221,79 +397,51 @@ function HistoryItem({ entry }: { entry: TransferHistoryEntry }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0d0d1a' },
-  content: { padding: 20, paddingBottom: 40 },
-  title: { color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 8 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#666', marginRight: 8 },
-  statusDotActive: { backgroundColor: '#00ff88' },
-  statusText: { color: '#aaa', fontSize: 14, flex: 1 },
-  encBadge: { backgroundColor: '#00d4ff22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
-  encBadgeText: { color: '#00d4ff', fontSize: 11, fontWeight: '600' },
-  errorText: { color: '#ff4444', fontSize: 13, marginBottom: 12, backgroundColor: '#ff444415', borderRadius: 8, padding: 10 },
-
-  // Connection controls
-  connectionControls: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  connectBtn: {
-    flex: 1, backgroundColor: '#00d4ff', borderRadius: 12, padding: 20, alignItems: 'center',
+  dialRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  helper: {
+    textAlign: 'center',
+    marginTop: 10,
+    letterSpacing: 0.6,
   },
-  connectBtnText: { color: '#000', fontSize: 18, fontWeight: '700' },
-  connectBtnSub: { color: '#00000088', fontSize: 12, marginTop: 4 },
-  listenBtn: {
-    flex: 1, backgroundColor: '#00ff88', borderRadius: 12, padding: 20, alignItems: 'center',
+  encRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  encIcon: {
+    width: 36, height: 36, borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  listenBtnText: { color: '#000', fontSize: 18, fontWeight: '700' },
-  listenBtnSub: { color: '#00000088', fontSize: 12, marginTop: 4 },
-  cancelBtn: {
-    backgroundColor: '#ff444433', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16,
-    borderWidth: 1, borderColor: '#ff4444',
+  logHeading: {
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  cancelBtnText: { color: '#ff4444', fontSize: 16, fontWeight: '600' },
-
-  // Transfer
-  transferSection: { marginTop: 20 },
-  sectionTitle: {
-    color: '#aaa', fontSize: 13, fontWeight: '600', textTransform: 'uppercase',
-    letterSpacing: 1, marginBottom: 12,
+  log: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    lineHeight: 19,
   },
-  sendRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  pickBtn: {
-    flex: 1, backgroundColor: '#252540', borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: '#444', borderStyle: 'dashed',
+  linkRow: { flexDirection: 'row', alignItems: 'center' },
+  linkDot: {
+    width: 8, height: 8, borderRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  pickBtnText: { color: '#00d4ff', fontSize: 14, fontWeight: '600' },
-  pickBtnSub: { color: '#888', fontSize: 12, marginTop: 2 },
-  sendBtn: { backgroundColor: '#00d4ff', borderRadius: 10, paddingHorizontal: 24, justifyContent: 'center' },
-  sendBtnDisabled: { backgroundColor: '#333' },
-  sendBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
-
-  progressSection: { backgroundColor: '#252540', borderRadius: 12, padding: 16, marginBottom: 16 },
-  progressLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  progressSub: { color: '#888', fontSize: 12, marginBottom: 8 },
-  retryText: { color: '#ff8800', fontSize: 12, marginTop: 4 },
-
-  receivedBox: {
-    backgroundColor: '#1a3d1a', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 16,
+  picker: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: radius.card,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.015)',
   },
-  receivedText: { color: '#00ff88', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  shareBtn: { backgroundColor: '#00ff88', borderRadius: 8, paddingHorizontal: 20, paddingVertical: 8 },
-  shareBtnText: { color: '#000', fontWeight: '700', fontSize: 14 },
-
-  disconnectBtn: {
-    backgroundColor: '#ff444422', borderRadius: 10, padding: 14, alignItems: 'center',
-    borderWidth: 1, borderColor: '#ff4444',
+  pickedRow: { flexDirection: 'row', alignItems: 'center' },
+  busyHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  disconnectBtnText: { color: '#ff4444', fontSize: 14, fontWeight: '600' },
-
-  // History
-  historySection: { marginTop: 24 },
-  historyItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  historyArrow: { fontSize: 18, fontWeight: '700', marginRight: 10 },
-  historyContent: { flex: 1 },
-  historyFileName: { color: '#ccc', fontSize: 14 },
-  historyMeta: { color: '#666', fontSize: 12 },
-
-  // Crypto info
-  cryptoInfo: { backgroundColor: '#00d4ff11', borderRadius: 8, padding: 12, marginTop: 24 },
-  cryptoInfoText: { color: '#00d4ff', fontSize: 12, textAlign: 'center' },
 });

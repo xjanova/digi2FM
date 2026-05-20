@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# design references (not source)
+/.design_handoff/
+/digi2fm.zip
