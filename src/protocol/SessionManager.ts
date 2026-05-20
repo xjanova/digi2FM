@@ -14,6 +14,7 @@ import { chunkFile, reassembleChunks } from './FileChunker';
 import { AudioEngine } from '../audio/AudioEngine';
 import { CryptoEngine } from '../crypto/CryptoEngine';
 import { readFileAsBytes, saveFile } from '../utils/FileUtils';
+import { debugLog, debugWarn } from '../utils/DebugLog';
 
 type StateCallback = (state: SessionState) => void;
 type FileCallback = (filePath: string) => void;
@@ -110,7 +111,7 @@ export class SessionManager {
     await this.audioEngine.transmitSinglePacket(packet);
 
     // Set timeout for retry
-    this.connectTimeoutId = setTimeout(async () => {
+    this.connectTimeoutId = setTimeout(() => {
       this.connectRetries++;
       if (this.connectRetries >= ProtocolConfig.CONNECT_RETRIES) {
         this.updateState({
@@ -121,7 +122,9 @@ export class SessionManager {
         return;
       }
       // Retry
-      await this.sendConnectWithRetry();
+      this.sendConnectWithRetry().catch((err) =>
+        debugWarn(`[Digi2FM] CONNECT retry failed: ${err?.message ?? err}`)
+      );
     }, ProtocolConfig.CONNECT_TIMEOUT_MS);
   }
 
@@ -287,8 +290,10 @@ export class SessionManager {
         return;
       }
 
-      console.log(`[Digi2FM] Retransmit attempt ${this.sendRetries}`);
-      this.attemptSendCurrentPacket();
+      debugLog(`[Digi2FM] Retransmit attempt ${this.sendRetries}`);
+      this.attemptSendCurrentPacket().catch((err) =>
+        debugWarn(`[Digi2FM] Retransmit failed: ${err?.message ?? err}`)
+      );
     }, ProtocolConfig.ACK_TIMEOUT_MS);
   }
 
@@ -338,10 +343,10 @@ export class SessionManager {
       // Verify key hash
       if (this.crypto.isEnabled() && !this.crypto.verifyKeyHash(payload.keyHash)) {
         // Key mismatch
-        setTimeout(async () => {
-          const nack = createDisconnectPacket(ProtocolConfig.DISCONNECT_KEY_MISMATCH);
-          await this.audioEngine.transmitSinglePacket(nack);
-        }, 0);
+        this.transmitInBackground(
+          createDisconnectPacket(ProtocolConfig.DISCONNECT_KEY_MISMATCH),
+          'key-mismatch-disconnect'
+        );
         this.updateState({ status: 'error', error: 'Encryption key mismatch' });
         return;
       }
@@ -353,15 +358,15 @@ export class SessionManager {
       this.crypto.setCombinedSalt(this.peerSalt, this.localSalt);
 
       // Send CONNECT_ACK
-      setTimeout(async () => {
-        const ack = createConnectAckPacket(
+      this.transmitInBackground(
+        createConnectAckPacket(
           ProtocolConfig.PROTOCOL_VERSION,
           this.crypto.getCapabilities(),
           this.localSalt,
           this.crypto.getKeyHash()
-        );
-        await this.audioEngine.transmitSinglePacket(ack);
-      }, 0);
+        ),
+        'CONNECT_ACK'
+      );
 
       this.updateState({
         status: 'connected',
@@ -425,7 +430,7 @@ export class SessionManager {
 
     try {
       const payload = parseNackPayload(packet.data);
-      console.warn(`[Digi2FM] NACK received for seq ${payload.nackedSeqNo}, reason: ${payload.reason}`);
+      debugWarn(`[Digi2FM] NACK received for seq ${payload.nackedSeqNo}, reason: ${payload.reason}`);
 
       // Clear the ACK timeout (don't wait for it)
       this.clearTimer('ack');
@@ -440,8 +445,12 @@ export class SessionManager {
         }
       } else {
         // Retransmit after short delay
-        console.log(`[Digi2FM] NACK retransmit attempt ${this.sendRetries}`);
-        setTimeout(() => this.attemptSendCurrentPacket(), 100);
+        debugLog(`[Digi2FM] NACK retransmit attempt ${this.sendRetries}`);
+        setTimeout(() => {
+          this.attemptSendCurrentPacket().catch((err) =>
+            debugWarn(`[Digi2FM] NACK retransmit failed: ${err?.message ?? err}`)
+          );
+        }, 100);
       }
     } catch {
       // Invalid NACK
@@ -465,16 +474,13 @@ export class SessionManager {
       });
 
       // Send ACK for header
-      setTimeout(async () => {
-        const ack = createAckPacket(packet.header.seqNo);
-        await this.audioEngine.transmitSinglePacket(ack);
-      }, 0);
+      this.transmitInBackground(createAckPacket(packet.header.seqNo), 'header-ACK');
     } catch {
       // Send NACK
-      setTimeout(async () => {
-        const nack = createNackPacket(packet.header.seqNo, ProtocolConfig.NACK_CRC_FAILURE);
-        await this.audioEngine.transmitSinglePacket(nack);
-      }, 0);
+      this.transmitInBackground(
+        createNackPacket(packet.header.seqNo, ProtocolConfig.NACK_CRC_FAILURE),
+        'header-NACK'
+      );
     }
   }
 
@@ -486,10 +492,7 @@ export class SessionManager {
     // Check for duplicate
     if (this.receivedChunks.has(seqNo)) {
       // Re-ACK duplicate
-      setTimeout(async () => {
-        const ack = createAckPacket(seqNo);
-        await this.audioEngine.transmitSinglePacket(ack);
-      }, 0);
+      this.transmitInBackground(createAckPacket(seqNo), `duplicate-ACK seq=${seqNo}`);
       return;
     }
 
@@ -499,10 +502,10 @@ export class SessionManager {
       const decrypted = this.crypto.decrypt(packet.data, seqNo);
       if (!decrypted) {
         // Decryption failed
-        setTimeout(async () => {
-          const nack = createNackPacket(seqNo, ProtocolConfig.NACK_DECRYPT_FAILURE);
-          await this.audioEngine.transmitSinglePacket(nack);
-        }, 0);
+        this.transmitInBackground(
+          createNackPacket(seqNo, ProtocolConfig.NACK_DECRYPT_FAILURE),
+          `decrypt-NACK seq=${seqNo}`
+        );
         return;
       }
       data = decrypted;
@@ -517,22 +520,24 @@ export class SessionManager {
     });
 
     // Send ACK
-    setTimeout(async () => {
-      const ack = createAckPacket(seqNo);
-      await this.audioEngine.transmitSinglePacket(ack);
-    }, 0);
+    this.transmitInBackground(createAckPacket(seqNo), `data-ACK seq=${seqNo}`);
   }
 
   private onEof(packet: Packet): void {
     if (this.state.status !== 'receiving' || !this.fileHeader) return;
 
-    // Send ACK for EOF
-    setTimeout(async () => {
-      const ack = createAckPacket(packet.header.seqNo);
-      await this.audioEngine.transmitSinglePacket(ack);
-
-      // Finish receiving
-      await this.finishReceive();
+    // Send ACK for EOF, then finish receiving. Both are async; chain them
+    // so finishReceive runs even if the ACK transmit fails (the peer can
+    // re-send EOF if it doesn't get our ACK).
+    setTimeout(() => {
+      this.audioEngine
+        .transmitSinglePacket(createAckPacket(packet.header.seqNo))
+        .catch((err) => debugWarn(`[Digi2FM] EOF-ACK transmit failed: ${err?.message ?? err}`))
+        .finally(() => {
+          this.finishReceive().catch((err) =>
+            debugWarn(`[Digi2FM] finishReceive failed: ${err?.message ?? err}`)
+          );
+        });
     }, 0);
   }
 
@@ -614,6 +619,20 @@ export class SessionManager {
   private clearAllTimers() {
     this.clearTimer('ack');
     this.clearTimer('connect');
+  }
+
+  /**
+   * Fire-and-forget transmit used for control packets (ACK/NACK/CONNECT_ACK)
+   * that we send from inside a synchronous packet handler. We can't await
+   * here because that would block the demodulator callback; we also can't
+   * let unhandled rejections escape, so all errors are caught and logged.
+   */
+  private transmitInBackground(packet: Uint8Array, label: string): void {
+    setTimeout(() => {
+      this.audioEngine.transmitSinglePacket(packet).catch((err) => {
+        debugWarn(`[Digi2FM] ${label} transmit failed: ${err?.message ?? err}`);
+      });
+    }, 0);
   }
 
   private updateState(partial: Partial<SessionState>) {

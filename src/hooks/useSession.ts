@@ -1,14 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Audio } from 'expo-av';
-import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { AudioEngine } from '../audio/AudioEngine';
+import { MicCapture } from '../audio/MicCapture';
 import { SessionManager } from '../protocol/SessionManager';
 import { CryptoEngine } from '../crypto/CryptoEngine';
 import { SessionState, AppSettings, SelectedFile } from '../types';
 import { setupAudioMode } from '../utils/PermissionUtils';
-import { getRecordingOptions, audioBase64ToFloat32 } from '../utils/AudioUtils';
-
-const MAX_POLL_ERRORS = 10;
 
 export function useSession(settings: AppSettings) {
   const [state, setState] = useState<SessionState>({
@@ -25,10 +21,7 @@ export function useSession(settings: AppSettings) {
   const engineRef = useRef<AudioEngine | null>(null);
   const sessionRef = useRef<SessionManager | null>(null);
   const cryptoRef = useRef<CryptoEngine | null>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activeRef = useRef(false);
-  const errorCountRef = useRef(0);
+  const micRef = useRef<MicCapture | null>(null);
 
   // Rebuild engine + crypto when settings change
   const getEngine = useCallback(() => {
@@ -67,73 +60,43 @@ export function useSession(settings: AppSettings) {
     return { session, engine };
   }, [getEngine, getCrypto]);
 
-  // Start mic recording loop (runs continuously during session)
+  const stopRecordingLoop = useCallback(() => {
+    micRef.current?.stop();
+    micRef.current = null;
+  }, []);
+
   const startRecordingLoop = useCallback(async (engine: AudioEngine) => {
-    await setupAudioMode();
-    activeRef.current = true;
-    errorCountRef.current = 0;
+    try {
+      await setupAudioMode();
+    } catch (err: any) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: err?.message || 'Failed to configure audio session',
+      }));
+      throw err;
+    }
+
+    stopRecordingLoop();
 
     try {
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(getRecordingOptions());
-      await recording.startAsync();
-      recordingRef.current = recording;
-
-      pollingRef.current = setInterval(async () => {
-        if (!activeRef.current) return;
-
-        try {
-          // Sequential: stop previous, process, then start new (no overlap)
-          const prevRecording = recordingRef.current;
-          if (!prevRecording) return;
-
-          await prevRecording.stopAndUnloadAsync();
-          const uri = prevRecording.getURI();
-
-          // Start new recording immediately after stopping
-          const nextRecording = new Audio.Recording();
-          await nextRecording.prepareToRecordAsync(getRecordingOptions());
-          await nextRecording.startAsync();
-          recordingRef.current = nextRecording;
-
-          // Process previous recording
-          if (uri) {
-            const base64 = await LegacyFileSystem.readAsStringAsync(uri, {
-              encoding: LegacyFileSystem.EncodingType.Base64,
-            });
-            const samples = audioBase64ToFloat32(base64);
-            if (samples && samples.length > 0) {
-              engine.feedSamples(samples);
-            }
-            await LegacyFileSystem.deleteAsync(uri, { idempotent: true });
-          }
-          errorCountRef.current = 0;
-        } catch (err) {
-          errorCountRef.current++;
-          if (errorCountRef.current >= MAX_POLL_ERRORS) {
-            activeRef.current = false;
-            stopRecordingLoop();
-          }
+      const mic = new MicCapture();
+      micRef.current = mic;
+      mic.start(
+        (samples) => engine.feedSamples(samples),
+        (message) => {
+          setState((prev) => ({ ...prev, status: 'error', error: message }));
         }
-      }, 500);
+      );
     } catch (err: any) {
-      console.error('[Digi2FM] Failed to start recording:', err);
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error: err?.message || 'Failed to start microphone',
+      }));
+      throw err;
     }
-  }, []);
-
-  const stopRecordingLoop = useCallback(async () => {
-    activeRef.current = false;
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-      } catch { /* already stopped */ }
-      recordingRef.current = null;
-    }
-  }, []);
+  }, [stopRecordingLoop]);
 
   // ============ PUBLIC API ============
 
@@ -158,7 +121,7 @@ export function useSession(settings: AppSettings) {
     if (sessionRef.current) {
       await sessionRef.current.disconnect();
     }
-    await stopRecordingLoop();
+    stopRecordingLoop();
   }, [stopRecordingLoop]);
 
   const cleanup = useCallback(async () => {
@@ -172,8 +135,8 @@ export function useSession(settings: AppSettings) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      activeRef.current = false;
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      micRef.current?.stop();
+      micRef.current = null;
       engineRef.current?.dispose();
       cryptoRef.current?.dispose();
     };

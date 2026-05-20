@@ -5,6 +5,7 @@ import { bitsToBytes } from '../codec/BinaryDecoder';
 import { parsePacket } from '../protocol/PacketParser';
 import { decodeBits } from '../codec/ErrorCorrection';
 import { Packet, ErrorCorrectionMode } from '../types';
+import { debugWarn } from '../utils/DebugLog';
 
 export type DemodulatorCallback = (packet: Packet) => void;
 export type SignalCallback = (detected: boolean, markEnergy: number, spaceEnergy: number) => void;
@@ -202,7 +203,7 @@ export class FskDemodulator {
       this.packetsReceived++;
       this.onPacket?.(packet);
     } else {
-      console.warn('[Digi2FM] Packet CRC error or parse failure, dropping packet');
+      debugWarn('[Digi2FM] Packet CRC error or parse failure, dropping packet');
     }
 
     // Keep remaining raw bits (may contain start of next preamble)

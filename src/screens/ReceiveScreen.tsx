@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useReceiver } from '../hooks/useReceiver';
 import { useAudioPermissions } from '../hooks/useAudioPermissions';
@@ -33,8 +34,11 @@ export default function ReceiveScreen() {
   };
 
   const handleShare = async () => {
-    if (receivedFilePath) {
+    if (!receivedFilePath) return;
+    try {
       await shareFile(receivedFilePath);
+    } catch (err: any) {
+      Alert.alert('Share Failed', err?.message || 'Could not share the file.');
     }
   };
 

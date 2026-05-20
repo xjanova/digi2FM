@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { AppSettings, BaudRate, ErrorCorrectionMode } from '../types';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { AppSettings, BaudRate } from '../types';
 import { ProtocolConfig } from '../constants/ProtocolConfig';
+import { setDebugEnabled } from '../utils/DebugLog';
 
 const DEFAULT_SETTINGS: AppSettings = {
   baudRate: ProtocolConfig.DEFAULT_BAUD_RATE as BaudRate,
   markFreq: ProtocolConfig.MARK_FREQ,
   spaceFreq: ProtocolConfig.SPACE_FREQ,
   errorCorrection: 'none',
-  volumeBoost: false,
   debugMode: false,
   encryptionEnabled: false,
   encryptionPassphrase: '',
@@ -29,6 +29,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
     setSettings(prev => ({ ...prev, ...partial }));
   }, []);
+
+  // Propagate debugMode to the module-level flag used by non-React code
+  // (audio/protocol layers) so they can gate their logging.
+  useEffect(() => {
+    setDebugEnabled(settings.debugMode);
+  }, [settings.debugMode]);
 
   return (
     <SettingsContext.Provider value={{ settings, updateSettings }}>

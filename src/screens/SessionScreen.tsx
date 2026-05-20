@@ -53,7 +53,12 @@ export default function SessionScreen() {
   };
 
   const handleShare = async () => {
-    if (receivedFilePath) await shareFile(receivedFilePath);
+    if (!receivedFilePath) return;
+    try {
+      await shareFile(receivedFilePath);
+    } catch (err: any) {
+      Alert.alert('Share Failed', err?.message || 'Could not share the file.');
+    }
   };
 
   const isIdle = state.status === 'idle';
