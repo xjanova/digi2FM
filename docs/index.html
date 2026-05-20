@@ -1,33 +1,483 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Digi2FM</title>
-    <style>
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0b0f17;
-        color: #e6edf3;
-        margin: 0;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 2rem;
-      }
-      main { max-width: 640px; }
-      h1 { font-size: 2.5rem; margin: 0 0 1rem; }
-      p { color: #9aa4b2; line-height: 1.6; }
-      a { color: #4cc2ff; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Digi2FM</h1>
-      <p>Software modem app for two-way encrypted audio data transfer.</p>
-      <p>The project site is under construction. See the <a href="https://github.com/xjanova/digi2FM">repository on GitHub</a>.</p>
-    </main>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digi2FM — Send files through sound waves</title>
+  <meta name="description" content="Digi2FM converts any digital file into FSK audio signals — transferring data between phones with just a speaker and a microphone. Inspired by 90s dial-up modems." />
+  <meta property="og:title" content="Digi2FM — Send files through sound waves" />
+  <meta property="og:description" content="A software modem for the modern era. No internet. No Bluetooth. No WiFi. Just sound." />
+  <meta property="og:type" content="website" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+  <!-- ANIMATED BACKGROUND -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow--cyan"></div>
+  <div class="bg-glow bg-glow--magenta"></div>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <a href="#top" class="nav__logo">
+      <span class="nav__logo-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span>Digi2FM</span>
+    </a>
+    <div class="nav__links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#tech">Tech</a>
+      <a href="#speed">Performance</a>
+      <a href="https://github.com/xjanova/digi2FM" class="nav__cta">GitHub →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="top" class="hero">
+    <div class="hero__inner">
+      <div class="hero__badge">
+        <span class="hero__badge-dot"></span>
+        v1.0 · React Native · Bell 202 FSK
+      </div>
+
+      <h1 class="hero__title">
+        Send any file<br />
+        through <span class="grad-text">sound waves</span>.
+      </h1>
+
+      <p class="hero__subtitle">
+        Digi2FM turns your phone's speaker into a software modem. Pick a file on one device,
+        play it as audio, and let another phone <strong>listen</strong> through its microphone
+        and reconstruct it — bit by bit. No internet. No Bluetooth. No WiFi.
+      </p>
+
+      <div class="hero__cta">
+        <a href="https://github.com/xjanova/digi2FM/releases" class="btn btn--primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Download APK
+        </a>
+        <a href="#how" class="btn btn--ghost">
+          See how it works
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14m0 0l-6-6m6 6l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+      </div>
+
+      <!-- LIVE WAVEFORM DEMO -->
+      <div class="waveform-demo">
+        <div class="waveform-demo__label">
+          <span class="led"></span>
+          Live FSK signal · <span class="mono">1200 Hz / 2200 Hz</span>
+        </div>
+        <canvas id="waveform" width="1200" height="180"></canvas>
+        <div class="waveform-demo__bits mono" id="bitstream">
+          10110010 01101001 00101110 10010110 11100101 00110011
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT IS IT -->
+  <section class="section">
+    <div class="container container--narrow">
+      <div class="eyebrow">The pitch</div>
+      <h2 class="section__title">A modem in your pocket.</h2>
+      <p class="section__lead">
+        In the 90s, dial-up modems screeched files across phone lines. Digi2FM does the same thing
+        — except the "wire" is the <strong>air between two phones</strong>, and the modem is
+        software. Any file, any size, any format — encoded as audible (or near-ultrasonic) tones.
+      </p>
+
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat__value">0</div>
+          <div class="stat__label">network dependencies</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">2</div>
+          <div class="stat__label">tones, infinite data</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">1200</div>
+          <div class="stat__label">baud, dial-up nostalgia</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">∞</div>
+          <div class="stat__label">file types supported</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" class="section section--alt">
+    <div class="container">
+      <div class="eyebrow">How it works</div>
+      <h2 class="section__title">From bytes to tones, and back.</h2>
+      <p class="section__lead">
+        Digi2FM is a full software-defined modem stack. Here's the journey of a file
+        from sender to receiver.
+      </p>
+
+      <div class="pipeline">
+        <div class="pipeline__step">
+          <div class="pipeline__num">01</div>
+          <h3>File → Binary</h3>
+          <p>The selected file is read as raw bytes via <code>expo-file-system</code> and converted to a bit stream.</p>
+        </div>
+        <div class="pipeline__arrow">→</div>
+        <div class="pipeline__step">
+          <div class="pipeline__num">02</div>
+          <h3>Chunk &amp; Frame</h3>
+          <p>Bytes are split into <strong>64-byte packets</strong> with a sync word, header, sequence number, and CRC-16 checksum.</p>
+        </div>
+        <div class="pipeline__arrow">→</div>
+        <div class="pipeline__step">
+          <div class="pipeline__num">03</div>
+          <h3>Error Correction</h3>
+          <p>Optional Hamming(7,4) or 3× repetition coding adds redundancy so noisy environments don't kill the transfer.</p>
+        </div>
+        <div class="pipeline__arrow">→</div>
+        <div class="pipeline__step">
+          <div class="pipeline__num">04</div>
+          <h3>FSK Modulation</h3>
+          <p>Bit <code>1</code> → <strong>1200 Hz</strong>, bit <code>0</code> → <strong>2200 Hz</strong>. The Bell 202 standard, rendered as PCM samples at 44.1 kHz.</p>
+        </div>
+        <div class="pipeline__arrow">→</div>
+        <div class="pipeline__step">
+          <div class="pipeline__num">05</div>
+          <h3>Speaker → Mic</h3>
+          <p>Audio plays through the speaker. The receiver captures it via microphone and runs the <strong>Goertzel algorithm</strong> to detect tones in real time.</p>
+        </div>
+        <div class="pipeline__arrow">→</div>
+        <div class="pipeline__step">
+          <div class="pipeline__num">06</div>
+          <h3>Decode &amp; Verify</h3>
+          <p>Bits are reassembled into packets. CRC check + sequence numbers ensure integrity. The file is written back to disk — pixel-perfect.</p>
+        </div>
+      </div>
+
+      <!-- FLOW VISUAL -->
+      <div class="flow-visual">
+        <div class="flow-device">
+          <div class="flow-device__screen">
+            <div class="flow-device__label">SENDER</div>
+            <div class="flow-device__file">📄 photo.jpg</div>
+            <div class="flow-bars">
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+        <div class="flow-air">
+          <div class="flow-air__waves">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="flow-air__label mono">1200 / 2200 Hz</div>
+        </div>
+        <div class="flow-device">
+          <div class="flow-device__screen">
+            <div class="flow-device__label">RECEIVER</div>
+            <div class="flow-device__file">📄 photo.jpg ✓</div>
+            <div class="flow-bars flow-bars--reverse">
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="section">
+    <div class="container">
+      <div class="eyebrow">Features</div>
+      <h2 class="section__title">Everything you need, nothing you don't.</h2>
+
+      <div class="feature-grid">
+        <div class="feature">
+          <div class="feature__icon">📤</div>
+          <h3>Send any file</h3>
+          <p>Images, PDFs, audio, ZIPs — anything. The protocol is format-agnostic; it just sees bytes.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">📥</div>
+          <h3>Listen &amp; receive</h3>
+          <p>Open Receive mode, point your mic at the source, and watch packets arrive in real time.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">📊</div>
+          <h3>Real-time visualizer</h3>
+          <p>Live spectrum analyzer + waveform display during both transmission and reception.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">⚙️</div>
+          <h3>Configurable modem</h3>
+          <p>Tune baud rate, error correction mode, packet size, and tone frequencies to your environment.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">🛡️</div>
+          <h3>CRC-16 integrity</h3>
+          <p>Every packet carries a CRC-16-CCITT checksum. Corrupt frames are flagged and re-requested.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">🧮</div>
+          <h3>Hamming(7,4) FEC</h3>
+          <p>Forward error correction recovers single-bit flips per nibble, gracefully handling acoustic noise.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">🔒</div>
+          <h3>Optional encryption</h3>
+          <p>TweetNaCl-powered authenticated encryption keeps your audio-transmitted secrets, secret.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">📦</div>
+          <h3>Packetized transfer</h3>
+          <p>Files are chunked with sequence numbers — large transfers survive interruptions and resume cleanly.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">📱</div>
+          <h3>Cross-platform</h3>
+          <p>Built on Expo + React Native. Ships to Android and iOS from a single TypeScript codebase.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH SPECS -->
+  <section id="tech" class="section section--alt">
+    <div class="container">
+      <div class="eyebrow">Technical specs</div>
+      <h2 class="section__title">The modem, demystified.</h2>
+
+      <div class="tech-layout">
+        <div class="tech-table">
+          <table>
+            <tbody>
+              <tr><td>Modulation</td><td><strong>FSK · Bell 202</strong></td></tr>
+              <tr><td>Mark (bit 1)</td><td><span class="tone tone--mark">1200 Hz</span></td></tr>
+              <tr><td>Space (bit 0)</td><td><span class="tone tone--space">2200 Hz</span></td></tr>
+              <tr><td>Baud rate</td><td>300 / 600 / <strong>1200</strong></td></tr>
+              <tr><td>Sample rate</td><td>44 100 Hz</td></tr>
+              <tr><td>Demodulation</td><td>Goertzel algorithm</td></tr>
+              <tr><td>Error detection</td><td>CRC-16-CCITT</td></tr>
+              <tr><td>Error correction</td><td>None · Repetition(3×) · Hamming(7,4)</td></tr>
+              <tr><td>Packet payload</td><td>64 bytes max</td></tr>
+              <tr><td>Framing</td><td>Preamble + sync word + header + CRC</td></tr>
+              <tr><td>Encryption</td><td>TweetNaCl secretbox (optional)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block__header">
+            <span class="code-block__dot code-block__dot--r"></span>
+            <span class="code-block__dot code-block__dot--y"></span>
+            <span class="code-block__dot code-block__dot--g"></span>
+            <span class="code-block__title">FskModulator.ts</span>
+          </div>
+<pre><code><span class="c-com">// Generate one bit as a sine wave at the right frequency</span>
+<span class="c-key">function</span> <span class="c-fn">modulateBit</span>(bit: <span class="c-typ">number</span>): Float32Array {
+  <span class="c-key">const</span> freq = bit === 1 ? <span class="c-num">MARK_HZ</span> : <span class="c-num">SPACE_HZ</span>;
+  <span class="c-key">const</span> samples = <span class="c-num">SAMPLE_RATE</span> / <span class="c-num">BAUD_RATE</span>;
+  <span class="c-key">const</span> buf = <span class="c-key">new</span> Float32Array(samples);
+
+  <span class="c-key">for</span> (<span class="c-key">let</span> i = 0; i &lt; samples; i++) {
+    buf[i] = Math.sin(2 * Math.<span class="c-typ">PI</span> * freq * i / <span class="c-num">SAMPLE_RATE</span>);
+  }
+  <span class="c-key">return</span> buf;
+}</code></pre>
+        </div>
+      </div>
+
+      <!-- PROJECT STRUCTURE -->
+      <div class="arch">
+        <h3 class="arch__title">Project architecture</h3>
+        <div class="arch__cols">
+          <div class="arch-card">
+            <div class="arch-card__icon">🎵</div>
+            <h4>audio/</h4>
+            <p>FSK modulator + demodulator, Goertzel filter, tone generator, spectrum analyzer.</p>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card__icon">📦</div>
+            <h4>protocol/</h4>
+            <p>Packet framing, CRC, sync detection, file chunking, session/transfer state machines.</p>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card__icon">🔧</div>
+            <h4>codec/</h4>
+            <p>Binary encode/decode and forward error correction (Hamming, repetition).</p>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card__icon">🔐</div>
+            <h4>crypto/</h4>
+            <p>TweetNaCl-based authenticated encryption for confidential transfers.</p>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card__icon">📱</div>
+            <h4>screens/</h4>
+            <p>Send, Receive, Session, and Settings UIs — built with React Native.</p>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card__icon">🪝</div>
+            <h4>hooks/</h4>
+            <p>React hooks that bind the transmitter/receiver state machines to the UI.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERFORMANCE -->
+  <section id="speed" class="section">
+    <div class="container container--narrow">
+      <div class="eyebrow">Performance</div>
+      <h2 class="section__title">How fast does sound go?</h2>
+      <p class="section__lead">
+        Throughput scales with baud rate and inversely with the strength of your error correction.
+        Here's the math, in real-world terms.
+      </p>
+
+      <div class="perf-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Baud</th>
+              <th>FEC</th>
+              <th>Effective speed</th>
+              <th>1 KB file</th>
+              <th>100 KB file</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill">300</span></td>
+              <td>None</td>
+              <td>≈ 25 B/s</td>
+              <td>~40 s</td>
+              <td>~1h 7m</td>
+            </tr>
+            <tr>
+              <td><span class="pill">300</span></td>
+              <td>Repetition 3×</td>
+              <td>≈ 8 B/s</td>
+              <td>~2 min</td>
+              <td>~3h 20m</td>
+            </tr>
+            <tr class="row--hl">
+              <td><span class="pill pill--hl">1200</span></td>
+              <td>None</td>
+              <td>≈ 100 B/s</td>
+              <td>~10 s</td>
+              <td>~17 min</td>
+            </tr>
+            <tr>
+              <td><span class="pill">1200</span></td>
+              <td>Repetition 3×</td>
+              <td>≈ 33 B/s</td>
+              <td>~30 s</td>
+              <td>~50 min</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="muted">
+        <strong>Tip:</strong> Use the lowest baud rate and strongest FEC in noisy rooms;
+        crank everything up when phones are touching and the room is quiet.
+      </p>
+    </div>
+  </section>
+
+  <!-- USE CASES -->
+  <section class="section section--alt">
+    <div class="container">
+      <div class="eyebrow">Why?</div>
+      <h2 class="section__title">When the internet isn't an option.</h2>
+
+      <div class="usecase-grid">
+        <div class="usecase">
+          <div class="usecase__num">①</div>
+          <h3>Air-gapped transfers</h3>
+          <p>Move data between devices that should never share a network. Audio is a one-way physical channel by design.</p>
+        </div>
+        <div class="usecase">
+          <div class="usecase__num">②</div>
+          <h3>Offline sharing</h3>
+          <p>No cell signal, no WiFi, no cable. As long as both phones can hear each other, you can share.</p>
+        </div>
+        <div class="usecase">
+          <div class="usecase__num">③</div>
+          <h3>Education &amp; demos</h3>
+          <p>A live, audible demonstration of modulation, framing, error correction, and decoding — all in one app.</p>
+        </div>
+        <div class="usecase">
+          <div class="usecase__num">④</div>
+          <h3>Pure nostalgia</h3>
+          <p>Let your phone screech like a 56k modem. Because we can, and because it sounds amazing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container container--narrow">
+      <h2>Ready to hear your files?</h2>
+      <p>Grab the APK, point two phones at each other, and watch sound become data.</p>
+      <div class="cta__buttons">
+        <a href="https://github.com/xjanova/digi2FM/releases" class="btn btn--primary btn--lg">
+          Download latest release
+        </a>
+        <a href="https://github.com/xjanova/digi2FM" class="btn btn--ghost btn--lg">
+          View source on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__grid">
+        <div>
+          <div class="footer__logo">📡 Digi2FM</div>
+          <p class="footer__tag">A software modem for the modern era.</p>
+        </div>
+        <div>
+          <h4>Project</h4>
+          <a href="https://github.com/xjanova/digi2FM">Source code</a>
+          <a href="https://github.com/xjanova/digi2FM/releases">Releases</a>
+          <a href="https://github.com/xjanova/digi2FM/issues">Issues</a>
+        </div>
+        <div>
+          <h4>Tech</h4>
+          <a href="#how">How it works</a>
+          <a href="#tech">Specs</a>
+          <a href="#speed">Performance</a>
+        </div>
+        <div>
+          <h4>License</h4>
+          <p>MIT</p>
+          <p class="footer__sub">Built with sound waves and nostalgia.</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
 </html>
