@@ -11,9 +11,31 @@ import {
 import { ProtocolConfig } from '../constants/ProtocolConfig';
 import { BaudRate, ErrorCorrectionMode } from '../types';
 import { useSettings } from '../context/SettingsContext';
+import { useUpdate } from '../context/UpdateContext';
 
 export default function SettingsScreen() {
   const { settings, updateSettings } = useSettings();
+  const { phase: updatePhase, currentVersion, latest, check } = useUpdate();
+
+  const updateBusy =
+    updatePhase === 'checking' || updatePhase === 'downloading';
+  const updateStatusError = updatePhase === 'error';
+  const updateStatus = ((): string | null => {
+    switch (updatePhase) {
+      case 'checking':
+        return 'Checking for updates...';
+      case 'available':
+        return `Version ${latest?.version ?? ''} is available.`;
+      case 'downloading':
+        return 'Downloading update...';
+      case 'upToDate':
+        return 'You are on the latest version.';
+      case 'error':
+        return 'Update check failed. Tap Check Now to retry.';
+      default:
+        return null;
+    }
+  })();
 
   const baudRates = ProtocolConfig.BAUD_RATES;
   const ecModes: { value: ErrorCorrectionMode; label: string; desc: string }[] = [
@@ -152,6 +174,39 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* App Updates */}
+      <Text style={styles.sectionTitle}>App Updates</Text>
+      <View style={styles.updateBox}>
+        <View style={styles.updateRow}>
+          <View style={styles.updateInfo}>
+            <Text style={styles.switchLabel}>Current Version</Text>
+            <Text style={styles.switchDesc}>v{currentVersion}</Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.checkButton,
+              updateBusy && styles.checkButtonDisabled,
+            ]}
+            onPress={() => check()}
+            disabled={updateBusy}
+          >
+            <Text style={styles.checkButtonText}>
+              {updatePhase === 'checking' ? 'Checking...' : 'Check Now'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {updateStatus && (
+          <Text
+            style={[
+              styles.updateStatus,
+              updateStatusError && styles.updateStatusError,
+            ]}
+          >
+            {updateStatus}
+          </Text>
+        )}
+      </View>
+
       {/* About */}
       <View style={styles.aboutBox}>
         <Text style={styles.aboutTitle}>Digi2FM</Text>
@@ -226,4 +281,19 @@ const styles = StyleSheet.create({
   passphraseHint: { color: '#666', fontSize: 11, marginTop: 6 },
   aboutTitle: { color: '#00d4ff', fontSize: 20, fontWeight: '700', marginBottom: 8 },
   aboutText: { color: '#888', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  updateBox: {
+    backgroundColor: '#252540', borderRadius: 8, padding: 14, marginTop: 10,
+  },
+  updateRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  updateInfo: { flex: 1 },
+  checkButton: {
+    backgroundColor: '#00d4ff15', borderWidth: 1, borderColor: '#00d4ff',
+    borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16,
+  },
+  checkButtonDisabled: { opacity: 0.5 },
+  checkButtonText: { color: '#00d4ff', fontSize: 14, fontWeight: '600' },
+  updateStatus: { color: '#888', fontSize: 13, marginTop: 10 },
+  updateStatusError: { color: '#ff6b6b' },
 });
